@@ -77,16 +77,26 @@ fun LiveTvScreen(
             loading = false
             return@LaunchedEffect
         }
-        try {
-            loading = true
-            error = null
-            categories = XtreamApi.fetchLiveCategories(host, user, pass)
-            allChannels = XtreamApi.fetchLiveStreams(host, user, pass)
-            CatalogRepo.setLive(allChannels)
+        // Fast path — within 30-min TTL, no network round-trip.
+        if (CatalogRepo.isLiveFresh()) {
+            allChannels = CatalogRepo.live
+            // Categories are tiny; refetch is cheap. Skip if we already have non-empty.
+            if (categories.isEmpty()) {
+                try { categories = XtreamApi.fetchLiveCategories(host, user, pass) } catch (_: Throwable) {}
+            }
             loading = false
-        } catch (t: Throwable) {
-            error = t.message ?: "Failed to load"
-            loading = false
+        } else {
+            try {
+                loading = true
+                error = null
+                categories = XtreamApi.fetchLiveCategories(host, user, pass)
+                allChannels = XtreamApi.fetchLiveStreams(host, user, pass)
+                CatalogRepo.setLive(allChannels)
+                loading = false
+            } catch (t: Throwable) {
+                error = t.message ?: "Failed to load"
+                loading = false
+            }
         }
         // Best-effort EPG load — never blocks channel rendering.
         EpgRepo.load(host, user, pass)

@@ -73,12 +73,20 @@ fun SeriesScreen(
 
     LaunchedEffect(host, user, pass) {
         if (host.isBlank()) { error = "No credentials. Open Settings."; loading = false; return@LaunchedEffect }
-        try {
-            categories = XtreamApi.fetchSeriesCategories(host, user, pass)
-            allSeries = XtreamApi.fetchSeries(host, user, pass)
-            CatalogRepo.setSeries(allSeries)
+        if (CatalogRepo.isSeriesFresh()) {
+            allSeries = CatalogRepo.series
+            if (categories.isEmpty()) {
+                try { categories = XtreamApi.fetchSeriesCategories(host, user, pass) } catch (_: Throwable) {}
+            }
             loading = false
-        } catch (t: Throwable) { error = t.message; loading = false }
+        } else {
+            try {
+                categories = XtreamApi.fetchSeriesCategories(host, user, pass)
+                allSeries = XtreamApi.fetchSeries(host, user, pass)
+                CatalogRepo.setSeries(allSeries)
+                loading = false
+            } catch (t: Throwable) { error = t.message; loading = false }
+        }
     }
 
     BackHandler(onBack = onExit)

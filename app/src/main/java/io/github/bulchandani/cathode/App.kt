@@ -12,6 +12,7 @@ import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
 import io.github.bulchandani.cathode.data.catalog.RecentItem
 import io.github.bulchandani.cathode.data.catalog.RecentsStore
 import io.github.bulchandani.cathode.data.store.CredsStore
+import io.github.bulchandani.cathode.data.store.SourcesStore
 import io.github.bulchandani.cathode.data.xtream.XtreamSeries
 import io.github.bulchandani.cathode.ui.favorites.FavoritesScreen
 import io.github.bulchandani.cathode.ui.live.LiveTvScreen
@@ -46,17 +47,22 @@ fun App() {
     val context = LocalContext.current
     val creds = remember { CredsStore(context) }
     val recents = remember { RecentsStore(context) }
-    remember { FavoritesRepo.init(context); Unit }
+    remember {
+        FavoritesRepo.init(context)
+        SourcesStore.init(context)
+        Unit
+    }
+    val activeSource by SourcesStore.active
 
-    val initialSection = if (creds.hasCreds()) ShellSection.LiveTv else ShellSection.Settings
+    val initialSection = if (activeSource != null) ShellSection.LiveTv else ShellSection.Settings
     var section by remember { mutableStateOf(initialSection) }
     var overlay by remember { mutableStateOf<Overlay?>(null) }
     var lastPlayer by remember { mutableStateOf<Overlay.Player?>(null) }
 
     var directUrl by remember { mutableStateOf(creds.lastDirectUrl) }
-    var host by remember { mutableStateOf(creds.host) }
-    var user by remember { mutableStateOf(creds.user) }
-    var pass by remember { mutableStateOf(creds.pass) }
+    val host = activeSource?.host ?: ""
+    val user = activeSource?.user ?: ""
+    val pass = activeSource?.pass ?: ""
 
     fun openPlayer(p: Overlay.Player, recent: RecentItem?) {
         if (recent != null) recents.touch(recent.copy(lastPlayedAt = System.currentTimeMillis()))
@@ -198,9 +204,18 @@ fun App() {
                         )
                     },
                     onUrlChange = { directUrl = it; creds.lastDirectUrl = it },
-                    onCredsChange = { h, u, p ->
-                        host = h; user = u; pass = p
-                        creds.host = h; creds.user = u; creds.pass = p
+                    onCredsChange = { _, _, _ -> /* draft only — saved via onSaveSource */ },
+                    onSaveSource = { h, u, p ->
+                        val existing = SourcesStore.sources.value
+                            .firstOrNull { it.host == h && it.user == u && it.pass == p }
+                        if (existing != null) {
+                            SourcesStore.setActive(existing.id)
+                        } else {
+                            val newId = SourcesStore.nextId()
+                            val label = h.removePrefix("http://").removePrefix("https://").take(40)
+                            SourcesStore.add(io.github.bulchandani.cathode.data.store.Source(newId, label, h, u, p))
+                            SourcesStore.setActive(newId)
+                        }
                     },
                     onExit = {},
                 )

@@ -73,12 +73,20 @@ fun MoviesScreen(
 
     LaunchedEffect(host, user, pass) {
         if (host.isBlank()) { error = "No credentials. Open Settings."; loading = false; return@LaunchedEffect }
-        try {
-            categories = XtreamApi.fetchVodCategories(host, user, pass)
-            allMovies = XtreamApi.fetchVodStreams(host, user, pass)
-            CatalogRepo.setVod(allMovies)
+        if (CatalogRepo.isVodFresh()) {
+            allMovies = CatalogRepo.vod
+            if (categories.isEmpty()) {
+                try { categories = XtreamApi.fetchVodCategories(host, user, pass) } catch (_: Throwable) {}
+            }
             loading = false
-        } catch (t: Throwable) { error = t.message; loading = false }
+        } else {
+            try {
+                categories = XtreamApi.fetchVodCategories(host, user, pass)
+                allMovies = XtreamApi.fetchVodStreams(host, user, pass)
+                CatalogRepo.setVod(allMovies)
+                loading = false
+            } catch (t: Throwable) { error = t.message; loading = false }
+        }
     }
 
     BackHandler(onBack = onExit)

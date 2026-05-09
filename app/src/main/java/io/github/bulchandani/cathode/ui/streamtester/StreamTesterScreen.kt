@@ -54,6 +54,7 @@ fun StreamTesterScreen(
     onPlay: (String) -> Unit,
     onUrlChange: (String) -> Unit,
     onCredsChange: (host: String, user: String, pass: String) -> Unit,
+    onSaveSource: (host: String, user: String, pass: String) -> Unit = { _, _, _ -> },
     onExit: () -> Unit,
 ) {
     var url by remember { mutableStateOf(initialUrl) }
@@ -131,7 +132,8 @@ fun StreamTesterScreen(
                                 try {
                                     val list = XtreamApi.fetchLiveStreams(host, user, pass)
                                     channels = list
-                                    status = "Found ${list.size} channels — pick one on the right"
+                                    onSaveSource(host, user, pass)
+                                    status = "Found ${list.size} channels — saved as source · pick one on the right"
                                     statusIsError = false
                                 } catch (t: Throwable) {
                                     status = "Error: ${t.message ?: t::class.simpleName}"

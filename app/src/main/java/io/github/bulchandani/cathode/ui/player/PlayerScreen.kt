@@ -50,6 +50,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private const val MAX_AUTO_RETRIES = 3
+private val RETRY_BACKOFF_MS = longArrayOf(1_000, 3_000, 8_000)
+
 @Composable
 fun PlayerScreen(
     streamUrl: String,
@@ -57,6 +60,22 @@ fun PlayerScreen(
     epgChannelId: String = "",
     onExit: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val player = remember { CathodePlayerFactory.create(context) }
+
+    // Try the original URL first; if it ends in .m3u8 and fails, swap to .ts.
+    var currentUrl by remember(streamUrl) { mutableStateOf(streamUrl) }
+    var triedTsFallback by remember(streamUrl) { mutableStateOf(!streamUrl.endsWith(".m3u8", true)) }
+    var retryAttempt by remember(streamUrl) { mutableStateOf(0) }
+
+    var status by remember { mutableStateOf("Connecting…") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var videoSize by remember { mutableStateOf(VideoSize.UNKNOWN) }
+    var videoFormat by remember { mutableStateOf<Format?>(null) }
+    var audioFormat by remember { mutableStateOf<Format?>(null) }
+    var clockTick by remember { mutableStateOf(0) }
+    var overlayVisible by remember { mutableStateOf(true) }
+
     val (nowProgramme, nextProgramme) = remember(epgChannelId, EpgRepo.isReady()) {
         EpgRepo.nowAndNext(epgChannelId)
     }
@@ -68,30 +87,28 @@ fun PlayerScreen(
         "${timeFmt.format(Date(it.startMillis))}  ${it.title}"
     } ?: "—"
 
-    val context = LocalContext.current
-    val player = remember { CathodePlayerFactory.create(context) }
-
-    var status by remember { mutableStateOf("Connecting…") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var videoSize by remember { mutableStateOf(VideoSize.UNKNOWN) }
-    var videoFormat by remember { mutableStateOf<Format?>(null) }
-    var audioFormat by remember { mutableStateOf<Format?>(null) }
-    var clockTick by remember { mutableStateOf(0) }
-    var overlayVisible by remember { mutableStateOf(true) }
-
-    DisposableEffect(streamUrl) {
+    DisposableEffect(currentUrl) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 status = when (state) {
                     Player.STATE_IDLE -> "Idle"
                     Player.STATE_BUFFERING -> "Buffering…"
-                    Player.STATE_READY -> "Playing"
+                    Player.STATE_READY -> {
+                        retryAttempt = 0; errorMessage = null; "Playing"
+                    }
                     Player.STATE_ENDED -> "Ended"
                     else -> "Unknown"
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
-                errorMessage = error.errorCodeName + ": " + (error.message ?: "")
+                val httpCode = (error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
+                val codeName = error.errorCodeName
+                val detail = listOfNotNull(
+                    httpCode?.let { "HTTP $it" },
+                    error.message?.takeIf { it.isNotBlank() },
+                ).joinToString(" · ")
+                errorMessage = "$codeName · $detail"
+                tryRecover(player)
             }
             override fun onVideoSizeChanged(size: VideoSize) { videoSize = size }
             override fun onTracksChanged(tracks: Tracks) {
@@ -104,9 +121,23 @@ fun PlayerScreen(
                     }
                 }
             }
+
+            // Try .ts swap first, then exponential backoff up to 3 attempts.
+            private fun tryRecover(p: ExoPlayer) {
+                if (currentUrl.endsWith(".m3u8", ignoreCase = true) && !triedTsFallback) {
+                    triedTsFallback = true
+                    currentUrl = currentUrl.removeSuffix(".m3u8") + ".ts"
+                    return
+                }
+                if (retryAttempt >= MAX_AUTO_RETRIES) return
+                val attempt = retryAttempt
+                retryAttempt = attempt + 1
+                p.playWhenReady = false
+            }
         }
+
         player.addListener(listener)
-        player.setMediaItem(MediaItem.fromUri(streamUrl))
+        player.setMediaItem(MediaItem.fromUri(currentUrl))
         player.prepare()
         player.playWhenReady = true
 
@@ -116,20 +147,25 @@ fun PlayerScreen(
         }
     }
 
-    // Clock ticker
-    LaunchedEffect(Unit) {
-        while (true) {
-            clockTick++
-            delay(1_000)
+    // Backoff coroutine — fires when retryAttempt advances.
+    LaunchedEffect(retryAttempt, currentUrl) {
+        if (retryAttempt in 1..MAX_AUTO_RETRIES) {
+            val wait = RETRY_BACKOFF_MS.getOrNull(retryAttempt - 1) ?: 8_000L
+            status = "Retrying in ${wait / 1000}s…"
+            delay(wait)
+            status = "Reconnecting…"
+            player.setMediaItem(MediaItem.fromUri(currentUrl))
+            player.prepare()
+            player.playWhenReady = true
         }
     }
 
-    // Auto-hide overlay 5 seconds after the last interaction
+    LaunchedEffect(Unit) {
+        while (true) { clockTick++; delay(1_000) }
+    }
+
     LaunchedEffect(overlayVisible) {
-        if (overlayVisible) {
-            delay(5_000)
-            overlayVisible = false
-        }
+        if (overlayVisible) { delay(5_000); overlayVisible = false }
     }
 
     BackHandler(onBack = onExit)
@@ -152,7 +188,6 @@ fun PlayerScreen(
         )
 
         if (overlayVisible) {
-            // Top chrome
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -161,17 +196,8 @@ fun PlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
             ) {
-                Text(
-                    text = channelLabel,
-                    style = CathodeText.Section,
-                    color = PhosphorGreen,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = clockString(clockTick),
-                    style = CathodeText.Headline,
-                    color = Amber,
-                )
+                Text(channelLabel, style = CathodeText.Section, color = PhosphorGreen, modifier = Modifier.weight(1f))
+                Text(timeFmt.format(Date()), style = CathodeText.Headline, color = Amber)
                 Spacer(Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
@@ -180,15 +206,10 @@ fun PlayerScreen(
                         .clickable(onClick = onExit)
                         .padding(horizontal = 18.dp, vertical = 10.dp),
                 ) {
-                    Text(
-                        text = "✕  BACK",
-                        style = CathodeText.Section,
-                        color = PhosphorGreen,
-                    )
+                    Text("✕  BACK", style = CathodeText.Section, color = PhosphorGreen)
                 }
             }
 
-            // Bottom chrome
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -197,28 +218,22 @@ fun PlayerScreen(
                     .padding(horizontal = 32.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     LabeledStat("NOW", nowText)
                     LabeledStat("NEXT", nextText)
                 }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     LabeledStat("CODEC", videoFormat?.codecs ?: videoFormat?.sampleMimeType ?: "—")
                     LabeledStat("RES", if (videoSize == VideoSize.UNKNOWN) "—" else "${videoSize.width}×${videoSize.height}")
                     LabeledStat("FPS", videoFormat?.frameRate?.takeIf { it > 0 }?.let { "%.2f".format(it) } ?: "—")
                     LabeledStat("BITRATE", videoFormat?.bitrate?.takeIf { it > 0 }?.let { "${it / 1000} kbps" } ?: "—")
                     LabeledStat("AUDIO", audioFormat?.codecs ?: audioFormat?.sampleMimeType ?: "—")
+                    LabeledStat("URL", currentUrl.substringAfterLast('/').take(28))
                 }
             }
         }
 
-        // Status / error always visible during connect
-        val showStatus by remember {
-            derivedStateOf { errorMessage != null || status != "Playing" }
-        }
+        val showStatus by remember { derivedStateOf { errorMessage != null || status != "Playing" } }
         if (showStatus) {
             Box(
                 modifier = Modifier
@@ -227,11 +242,21 @@ fun PlayerScreen(
                     .background(Color.Black.copy(alpha = 0.7f))
                     .padding(horizontal = 24.dp, vertical = 16.dp),
             ) {
-                Text(
-                    text = errorMessage ?: status,
-                    style = CathodeText.Section,
-                    color = if (errorMessage != null) AlarmRed else PhosphorGreen,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = errorMessage ?: status,
+                        style = CathodeText.Section,
+                        color = if (errorMessage != null) AlarmRed else PhosphorGreen,
+                    )
+                    if (errorMessage != null) {
+                        Text("URL: $currentUrl", style = CathodeText.Caption, color = OffWhite)
+                        Text(
+                            "Auto-retry ${retryAttempt}/${MAX_AUTO_RETRIES}",
+                            style = CathodeText.Caption,
+                            color = PhosphorGreenDim,
+                        )
+                    }
+                }
             }
         }
     }
@@ -244,7 +269,3 @@ private fun LabeledStat(label: String, value: String) {
         Text(text = value, style = CathodeText.Data, color = OffWhite)
     }
 }
-
-private val clockFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-private fun clockString(@Suppress("UNUSED_PARAMETER") tick: Int): String =
-    clockFormat.format(Date())

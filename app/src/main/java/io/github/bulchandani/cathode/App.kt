@@ -51,6 +51,7 @@ fun App() {
     val initialSection = if (creds.hasCreds()) ShellSection.LiveTv else ShellSection.Settings
     var section by remember { mutableStateOf(initialSection) }
     var overlay by remember { mutableStateOf<Overlay?>(null) }
+    var lastPlayer by remember { mutableStateOf<Overlay.Player?>(null) }
 
     var directUrl by remember { mutableStateOf(creds.lastDirectUrl) }
     var host by remember { mutableStateOf(creds.host) }
@@ -59,6 +60,7 @@ fun App() {
 
     fun openPlayer(p: Overlay.Player, recent: RecentItem?) {
         if (recent != null) recents.touch(recent.copy(lastPlayedAt = System.currentTimeMillis()))
+        (overlay as? Overlay.Player)?.let { lastPlayer = it }
         overlay = p
     }
 
@@ -68,6 +70,12 @@ fun App() {
             channelLabel = o.label,
             epgChannelId = o.epgChannelId,
             onExit = { overlay = o.backTo },
+            onLastChannel = lastPlayer?.let { prev ->
+                {
+                    lastPlayer = o
+                    overlay = prev
+                }
+            },
         )
         is Overlay.SeriesDetail -> SeriesDetailScreen(
             host = host, user = user, pass = pass,

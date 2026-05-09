@@ -25,6 +25,7 @@ import io.github.bulchandani.cathode.ui.series.SeriesScreen
 import io.github.bulchandani.cathode.ui.shell.CathodeShell
 import io.github.bulchandani.cathode.ui.shell.ShellSection
 import io.github.bulchandani.cathode.ui.streamtester.StreamTesterScreen
+import io.github.bulchandani.cathode.ui.testurl.TestUrlScreen
 
 private sealed interface Overlay {
     data class Player(
@@ -34,6 +35,7 @@ private sealed interface Overlay {
         val backTo: Overlay?,
     ) : Overlay
     data class SeriesDetail(val series: XtreamSeries) : Overlay
+    data object TestUrl : Overlay
 }
 
 private val LIVE_ID_REGEX = Regex("/live/[^/]+/[^/]+/(\\d+)\\.[^.]+$")
@@ -95,6 +97,19 @@ fun App() {
                     ),
                 )
             },
+            onExit = { overlay = null },
+        )
+        Overlay.TestUrl -> TestUrlScreen(
+            initialUrl = directUrl,
+            onPlay = { url ->
+                directUrl = url
+                creds.lastDirectUrl = url
+                openPlayer(
+                    Overlay.Player(url, url.substringAfterLast('/').take(40), "", backTo = null),
+                    recent = null,
+                )
+            },
+            onUrlChange = { directUrl = it; creds.lastDirectUrl = it },
             onExit = { overlay = null },
         )
         null -> CathodeShell(
@@ -191,19 +206,15 @@ fun App() {
                 )
 
                 ShellSection.Settings -> StreamTesterScreen(
-                    initialUrl = directUrl,
                     initialHost = host,
                     initialUser = user,
                     initialPass = pass,
                     onPlay = { url ->
-                        directUrl = url
-                        creds.lastDirectUrl = url
                         openPlayer(
                             Overlay.Player(url, url.substringAfterLast('/').take(40), "", backTo = null),
                             recent = null,
                         )
                     },
-                    onUrlChange = { directUrl = it; creds.lastDirectUrl = it },
                     onCredsChange = { _, _, _ -> /* draft only — saved via onSaveSource */ },
                     onSaveSource = { h, u, p ->
                         val existing = SourcesStore.sources.value
@@ -217,6 +228,7 @@ fun App() {
                             SourcesStore.setActive(newId)
                         }
                     },
+                    onOpenUrlTester = { overlay = Overlay.TestUrl },
                     onExit = {},
                 )
             }

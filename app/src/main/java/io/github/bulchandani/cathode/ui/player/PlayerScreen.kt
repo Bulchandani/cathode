@@ -83,6 +83,7 @@ fun PlayerScreen(
     var syncDialogOpen by remember { mutableStateOf(false) }
     var sleepEndsAt by remember { mutableStateOf<Long?>(null) }
     var audioSyncMs by remember { mutableStateOf(AudioSyncState.offsetMs) }
+    var overlayVisible by remember { mutableStateOf(true) }
 
     val (nowProgramme, nextProgramme) = remember(epgChannelId, EpgRepo.isReady()) {
         EpgRepo.nowAndNext(epgChannelId)
@@ -167,6 +168,18 @@ fun PlayerScreen(
         Toaster.show("Sleep timer reached — paused.")
     }
 
+    // Auto-hide overlay 3 seconds after stream is healthily playing.
+    LaunchedEffect(status, errorMessage) {
+        when {
+            errorMessage != null -> overlayVisible = true
+            status == "Buffering…" -> overlayVisible = true
+            status == "Playing" -> {
+                delay(3_000)
+                overlayVisible = false
+            }
+        }
+    }
+
     BackHandler(onBack = onExit)
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -179,12 +192,20 @@ fun PlayerScreen(
                     controllerShowTimeoutMs = 5_000
                     setControllerHideOnTouch(true)
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    setControllerVisibilityListener(
+                        PlayerView.ControllerVisibilityListener { visibility ->
+                            // Sync our top/bottom chrome with native controller visibility.
+                            overlayVisible = visibility == android.view.View.VISIBLE
+                        },
+                    )
                 }
             },
         )
 
-        // Top chrome — channel, clock, back
-        Row(
+        // Top chrome — channel, clock, back. Hidden while video plays
+        // healthily; revealed when buffering, errored, or when the
+        // user surfaces the native controller (tap / D-pad SELECT).
+        if (overlayVisible) Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.6f))
@@ -206,8 +227,8 @@ fun PlayerScreen(
             }
         }
 
-        // Programme + chip strip
-        Column(
+        // Programme + chip strip — same visibility gating as the top.
+        if (overlayVisible) Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()

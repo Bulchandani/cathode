@@ -1,5 +1,6 @@
 package io.github.bulchandani.cathode
 
+import android.app.Activity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,8 @@ private fun streamIdFromUrl(url: String, regex: Regex): Int =
 @Composable
 fun App() {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val exitApp: () -> Unit = { activity?.finish() }
     val creds = remember { CredsStore(context) }
     val recents = remember { RecentsStore(context) }
     remember {
@@ -128,7 +131,7 @@ fun App() {
                             recent = RecentItem(ContentKind.Live, id, label, url, System.currentTimeMillis()),
                         )
                     },
-                    onExit = {},
+                    onExit = exitApp,
                     onOpenSettings = { section = ShellSection.Settings },
                 )
 
@@ -141,14 +144,14 @@ fun App() {
                             recent = RecentItem(ContentKind.Movie, id, label, url, System.currentTimeMillis()),
                         )
                     },
-                    onExit = {},
+                    onExit = exitApp,
                     onOpenSettings = { section = ShellSection.Settings },
                 )
 
                 ShellSection.Series -> SeriesScreen(
                     host = host, user = user, pass = pass,
                     onSeriesClick = { overlay = Overlay.SeriesDetail(it) },
-                    onExit = {},
+                    onExit = exitApp,
                     onOpenSettings = { section = ShellSection.Settings },
                 )
 
@@ -172,7 +175,7 @@ fun App() {
                         val match = CatalogRepo.series.firstOrNull { it.seriesId == id }
                         if (match != null) overlay = Overlay.SeriesDetail(match)
                     },
-                    onExit = {},
+                    onExit = exitApp,
                 )
 
                 ShellSection.Favorites -> FavoritesScreen(
@@ -192,7 +195,7 @@ fun App() {
                         )
                     },
                     onOpenSeries = { overlay = Overlay.SeriesDetail(it) },
-                    onExit = {},
+                    onExit = exitApp,
                 )
 
                 ShellSection.Recents -> RecentsScreen(
@@ -202,7 +205,7 @@ fun App() {
                             recent = r.copy(lastPlayedAt = System.currentTimeMillis()),
                         )
                     },
-                    onExit = {},
+                    onExit = exitApp,
                 )
 
                 ShellSection.Settings -> StreamTesterScreen(
@@ -229,7 +232,7 @@ fun App() {
                         }
                     },
                     onOpenUrlTester = { overlay = Overlay.TestUrl },
-                    onExit = {},
+                    onExit = exitApp,
                 )
             }
         }

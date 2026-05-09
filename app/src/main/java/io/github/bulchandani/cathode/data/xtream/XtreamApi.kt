@@ -3,6 +3,8 @@ package io.github.bulchandani.cathode.data.xtream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -47,20 +49,69 @@ object XtreamApi {
                 throw IOException("HTTP $code from $cleanHost")
             }
 
-            val text = conn.inputStream.bufferedReader().use { it.readText() }
-            val arr = JSONArray(text)
+            val text = (conn.inputStream ?: conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() }
+                ?: throw IOException("Empty response from $cleanHost")
 
-            List(arr.length()) { i ->
-                val obj = arr.getJSONObject(i)
+            parseLiveStreams(text)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * Some Xtream servers return a JSONObject (auth failure, account
+     * disabled, expired, banned) where we'd expect a JSONArray of
+     * streams. Parse both shapes and surface a meaningful message
+     * instead of a raw `JSONException` at the call site.
+     */
+    internal fun parseLiveStreams(text: String): List<XtreamLiveStream> {
+        val token = try {
+            JSONTokener(text).nextValue()
+        } catch (e: Exception) {
+            throw IOException(
+                "Server returned non-JSON. First 200 chars: ${text.take(200)}",
+                e,
+            )
+        }
+
+        return when (token) {
+            is JSONArray -> List(token.length()) { i ->
+                val obj = token.getJSONObject(i)
                 XtreamLiveStream(
                     streamId = obj.getInt("stream_id"),
                     name = obj.optString("name", ""),
                     categoryId = obj.optString("category_id", ""),
                 )
             }
-        } finally {
-            conn.disconnect()
+            is JSONObject -> throw IOException(translateXtreamError(token))
+            else -> throw IOException(
+                "Unexpected JSON shape (${token::class.simpleName}). First 200 chars: ${text.take(200)}",
+            )
         }
+    }
+
+    private fun translateXtreamError(obj: JSONObject): String {
+        val userInfo = obj.optJSONObject("user_info")
+        if (userInfo != null) {
+            val auth = userInfo.optInt("auth", -1)
+            val status = userInfo.optString("status", "")
+            val message = userInfo.optString("message", "")
+
+            return when {
+                auth == 0 -> "Authentication failed — check username & password"
+                status.equals("Banned", ignoreCase = true) -> "Account banned by provider"
+                status.equals("Disabled", ignoreCase = true) -> "Account disabled by provider"
+                status.equals("Expired", ignoreCase = true) -> "Account expired"
+                message.isNotEmpty() -> "Provider says: $message"
+                else -> "Unexpected user_info response (status=$status, auth=$auth)"
+            }
+        }
+
+        val errorMsg = obj.optString("error", "")
+            .ifEmpty { obj.optString("message", "") }
+            .ifEmpty { obj.toString().take(200) }
+        return "Server error: $errorMsg"
     }
 
     fun buildLiveStreamUrl(

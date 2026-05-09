@@ -1,6 +1,5 @@
 package io.github.bulchandani.cathode.player
 
-import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import java.nio.ByteBuffer
@@ -68,5 +67,3 @@ object AudioSyncState {
     @Volatile var offsetMs: Int = 0
 }
 
-@Suppress("unused")
-private val ignoredCRefForLink: Int = C.PCM_ENCODING_16BIT

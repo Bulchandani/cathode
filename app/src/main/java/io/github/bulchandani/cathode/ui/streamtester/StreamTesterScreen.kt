@@ -70,7 +70,7 @@ fun StreamTesterScreen(
 
     BackHandler(onBack = onExit)
 
-    Box(modifier = Modifier.fillMaxSize().background(Void)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.fillMaxSize().padding(48.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -245,9 +245,6 @@ fun StreamTesterScreen(
             }
             updateStatus?.let { Text(it, style = CathodeText.Data, color = Amber) }
         }
-
-        CathodeScanlines()
-        CathodeVignette()
     }
 }
 

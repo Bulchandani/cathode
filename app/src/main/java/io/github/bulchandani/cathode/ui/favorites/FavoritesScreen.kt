@@ -55,7 +55,7 @@ fun FavoritesScreen(
 
     BackHandler(onBack = onExit)
 
-    Box(modifier = Modifier.fillMaxSize().background(Void)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
             Text("FAVORITES", style = CathodeText.Display, color = PhosphorGreen)
             Spacer(Modifier.height(8.dp))
@@ -104,8 +104,6 @@ fun FavoritesScreen(
                 }
             }
         }
-        CathodeScanlines()
-        CathodeVignette()
     }
 }
 

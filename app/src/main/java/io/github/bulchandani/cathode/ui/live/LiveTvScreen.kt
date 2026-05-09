@@ -97,7 +97,7 @@ fun LiveTvScreen(
     val displayChannels = if (selectedCategoryId == ALL_CATEGORY_ID) allChannels
     else allChannels.filter { it.categoryId == selectedCategoryId }
 
-    Box(modifier = Modifier.fillMaxSize().background(Void)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("LIVE TV", style = CathodeText.Display, color = PhosphorGreen)
@@ -136,8 +136,6 @@ fun LiveTvScreen(
                 }
             }
         }
-        CathodeScanlines()
-        CathodeVignette()
     }
 }
 

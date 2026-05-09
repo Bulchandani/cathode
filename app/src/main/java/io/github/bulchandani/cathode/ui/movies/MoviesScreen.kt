@@ -84,7 +84,7 @@ fun MoviesScreen(
 
     val display = if (selectedCat == ALL) allMovies else allMovies.filter { it.categoryId == selectedCat }
 
-    Box(modifier = Modifier.fillMaxSize().background(Void)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("MOVIES", style = CathodeText.Display, color = PhosphorGreen)
@@ -135,8 +135,6 @@ fun MoviesScreen(
                 }
             }
         }
-        CathodeScanlines()
-        CathodeVignette()
     }
 }
 

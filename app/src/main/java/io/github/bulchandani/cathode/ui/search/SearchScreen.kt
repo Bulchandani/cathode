@@ -60,7 +60,7 @@ fun SearchScreen(
         if (q.length < 2) emptyList() else CatalogRepo.series.filter { it.name.contains(q, true) }.take(50)
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Void)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
             Text("SEARCH", style = CathodeText.Display, color = PhosphorGreen)
             Spacer(Modifier.height(12.dp))
@@ -112,8 +112,6 @@ fun SearchScreen(
                 )
             }
         }
-        CathodeScanlines()
-        CathodeVignette()
     }
 }
 

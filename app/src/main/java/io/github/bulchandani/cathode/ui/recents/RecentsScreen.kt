@@ -49,7 +49,7 @@ fun RecentsScreen(
 
     BackHandler(onBack = onExit)
 
-    Box(modifier = Modifier.fillMaxSize().background(Void)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
             Text("RECENTS", style = CathodeText.Display, color = PhosphorGreen)
             Spacer(Modifier.height(8.dp))
@@ -91,7 +91,5 @@ fun RecentsScreen(
                 }
             }
         }
-        CathodeScanlines()
-        CathodeVignette()
     }
 }

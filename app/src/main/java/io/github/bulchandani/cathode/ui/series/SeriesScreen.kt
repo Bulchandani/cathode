@@ -84,7 +84,7 @@ fun SeriesScreen(
 
     val display = if (selectedCat == ALL) allSeries else allSeries.filter { it.categoryId == selectedCat }
 
-    Box(modifier = Modifier.fillMaxSize().background(Void)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("SERIES", style = CathodeText.Display, color = PhosphorGreen)
@@ -132,8 +132,6 @@ fun SeriesScreen(
                 }
             }
         }
-        CathodeScanlines()
-        CathodeVignette()
     }
 }
 

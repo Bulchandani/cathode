@@ -71,7 +71,8 @@ fun SeriesScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(host, user, pass) {
+    var refreshKey by remember { mutableStateOf(0) }
+    LaunchedEffect(host, user, pass, refreshKey) {
         if (host.isBlank()) { error = "No credentials. Open Settings."; loading = false; return@LaunchedEffect }
         if (CatalogRepo.isSeriesFresh()) {
             allSeries = CatalogRepo.series
@@ -81,11 +82,25 @@ fun SeriesScreen(
             loading = false
         } else {
             try {
-                categories = XtreamApi.fetchSeriesCategories(host, user, pass)
+                loading = true
+                error = null
+                categories = try { XtreamApi.fetchSeriesCategories(host, user, pass) } catch (_: Throwable) { emptyList() }
                 allSeries = XtreamApi.fetchSeries(host, user, pass)
                 CatalogRepo.setSeries(allSeries)
                 loading = false
-            } catch (t: Throwable) { error = t.message; loading = false }
+            } catch (t: Throwable) {
+                val raw = t.message.orEmpty()
+                error = when {
+                    raw.contains("HTTP 500") ->
+                        "Your provider doesn't expose Series via the Xtream API (HTTP 500). Live TV and Movies still work — try those."
+                    raw.contains("HTTP 401") || raw.contains("HTTP 403") ->
+                        "Series catalog is locked for this account (HTTP 4xx)."
+                    raw.contains("HTTP 404") ->
+                        "Series endpoint not found on this provider (HTTP 404)."
+                    else -> raw.ifBlank { "Failed to load Series." }
+                }
+                loading = false
+            }
         }
     }
 
@@ -107,7 +122,14 @@ fun SeriesScreen(
                 loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Fetching series…", style = CathodeText.Section, color = PhosphorGreen)
                 }
-                error != null -> ErrorPane(error!!, onOpenSettings)
+                error != null -> ErrorPane(
+                    message = error!!,
+                    onOpenSettings = onOpenSettings,
+                    onRetry = {
+                        CatalogRepo.invalidate()
+                        refreshKey += 1
+                    },
+                )
                 else -> Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Column(modifier = Modifier.width(260.dp).fillMaxHeight()) {
                         Text("CATEGORIES", style = CathodeText.Section, color = PhosphorGreen)
@@ -189,16 +211,19 @@ private fun SeriesPoster(s: XtreamSeries, onClick: () -> Unit, onLongClick: () -
 }
 
 @Composable
-private fun ErrorPane(message: String, onOpenSettings: () -> Unit) {
+private fun ErrorPane(message: String, onOpenSettings: () -> Unit, onRetry: () -> Unit = {}) {
     Column(
         modifier = Modifier.fillMaxSize().padding(48.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(48.dp))
-        Text("⚠  COULDN'T LOAD SERIES", style = CathodeText.Headline, color = AlarmRed)
+        Text("⚠  SERIES UNAVAILABLE", style = CathodeText.Headline, color = AlarmRed)
         Text(message, style = CathodeText.Body, color = OffWhite)
         Spacer(Modifier.height(16.dp))
-        CathodeButton(text = "OPEN SETTINGS", onClick = onOpenSettings)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            CathodeButton(text = "RETRY", onClick = onRetry)
+            CathodeButton(text = "OPEN SETTINGS", onClick = onOpenSettings)
+        }
     }
 }

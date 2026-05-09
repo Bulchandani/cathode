@@ -72,6 +72,7 @@ object SourcesStore {
         _activeId.value = id
         // Switching providers means stale catalogs/EPG; invalidate caches.
         io.github.bulchandani.cathode.data.catalog.CatalogRepo.invalidate()
+        io.github.bulchandani.cathode.data.epg.EpgRepo.invalidate()
         save()
     }
 

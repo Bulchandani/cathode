@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +51,7 @@ import io.github.bulchandani.cathode.ui.theme.DimGrey
 import io.github.bulchandani.cathode.ui.theme.OffWhite
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreen
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreenDim
+import kotlinx.coroutines.launch
 import io.github.bulchandani.cathode.ui.theme.Void
 
 private const val ALL_CATEGORY_ID = "__all__"
@@ -108,6 +110,7 @@ fun LiveTvScreen(
     val displayChannels = if (selectedCategoryId == ALL_CATEGORY_ID) allChannels
     else allChannels.filter { it.categoryId == selectedCategoryId }
 
+    val refreshScope = rememberCoroutineScope()
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -120,6 +123,21 @@ fun LiveTvScreen(
                         color = Amber,
                     )
                 }
+                Spacer(Modifier.weight(1f))
+                io.github.bulchandani.cathode.ui.components.CathodeButton(
+                    text = if (epgReady) "REFRESH EPG" else "LOAD EPG",
+                    onClick = {
+                        refreshScope.launch {
+                            io.github.bulchandani.cathode.ui.components.Toaster.show("Refreshing EPG…")
+                            EpgRepo.load(host, user, pass, force = true)
+                            epgReady = EpgRepo.isReady()
+                            val err = EpgRepo.lastErrorMessage()
+                            io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                if (err != null) "EPG error: $err" else "EPG refreshed",
+                            )
+                        }
+                    },
+                )
             }
             Spacer(Modifier.height(16.dp))
             when {

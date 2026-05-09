@@ -2,11 +2,14 @@ package io.github.bulchandani.cathode
 
 import android.app.Activity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import io.github.bulchandani.cathode.data.epg.EpgRepo
+import io.github.bulchandani.cathode.update.EpgRefreshWorker
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.catalog.ContentKind
 import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
@@ -56,6 +59,10 @@ fun App() {
         FavoritesRepo.init(context)
         SourcesStore.init(context)
         Unit
+    }
+    LaunchedEffect(Unit) {
+        EpgRepo.init(context)
+        EpgRefreshWorker.schedule(context)
     }
     val activeSource by SourcesStore.active
 

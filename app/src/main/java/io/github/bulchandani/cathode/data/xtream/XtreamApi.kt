@@ -10,15 +10,50 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+data class XtreamCategory(
+    val categoryId: String,
+    val name: String,
+)
+
 data class XtreamLiveStream(
     val streamId: Int,
     val name: String,
     val categoryId: String,
+    val streamIcon: String,
+    val epgChannelId: String,
+)
+
+data class XtreamVodStream(
+    val streamId: Int,
+    val name: String,
+    val categoryId: String,
+    val streamIcon: String,
+    val containerExtension: String,
+    val rating: String,
+    val year: String,
+)
+
+data class XtreamSeries(
+    val seriesId: Int,
+    val name: String,
+    val categoryId: String,
+    val cover: String,
+    val plot: String,
+    val rating: String,
+    val year: String,
+)
+
+data class XtreamSeriesEpisode(
+    val episodeId: String,
+    val title: String,
+    val episodeNum: Int,
+    val seasonNum: Int,
+    val containerExtension: String,
+    val plot: String,
 )
 
 object XtreamApi {
 
-    /** Accepts `provider.com:8080`, `http://provider.com:8080`, etc. */
     fun normalizeHost(input: String): String {
         val trimmed = input.trim().trimEnd('/')
         return when {
@@ -28,66 +63,154 @@ object XtreamApi {
         }
     }
 
-    suspend fun fetchLiveStreams(
-        host: String,
-        username: String,
-        password: String,
-    ): List<XtreamLiveStream> = withContext(Dispatchers.IO) {
-        val cleanHost = normalizeHost(host)
-        val u = URLEncoder.encode(username, "UTF-8")
-        val p = URLEncoder.encode(password, "UTF-8")
-        val url = URL("$cleanHost/player_api.php?username=$u&password=$p&action=get_live_streams")
+    suspend fun fetchLiveCategories(host: String, user: String, pass: String): List<XtreamCategory> =
+        fetchCategoriesAction(host, user, pass, "get_live_categories")
 
-        val conn = url.openConnection() as HttpURLConnection
-        try {
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 30_000
+    suspend fun fetchVodCategories(host: String, user: String, pass: String): List<XtreamCategory> =
+        fetchCategoriesAction(host, user, pass, "get_vod_categories")
 
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                throw IOException("HTTP $code from $cleanHost")
-            }
+    suspend fun fetchSeriesCategories(host: String, user: String, pass: String): List<XtreamCategory> =
+        fetchCategoriesAction(host, user, pass, "get_series_categories")
 
-            val text = (conn.inputStream ?: conn.errorStream)
-                ?.bufferedReader()?.use { it.readText() }
-                ?: throw IOException("Empty response from $cleanHost")
-
-            parseLiveStreams(text)
-        } finally {
-            conn.disconnect()
+    suspend fun fetchLiveStreams(host: String, user: String, pass: String): List<XtreamLiveStream> =
+        withContext(Dispatchers.IO) {
+            parseLiveStreams(get(host, user, pass, "get_live_streams"))
         }
+
+    suspend fun fetchVodStreams(host: String, user: String, pass: String): List<XtreamVodStream> =
+        withContext(Dispatchers.IO) {
+            parseVodStreams(get(host, user, pass, "get_vod_streams"))
+        }
+
+    suspend fun fetchSeries(host: String, user: String, pass: String): List<XtreamSeries> =
+        withContext(Dispatchers.IO) {
+            parseSeries(get(host, user, pass, "get_series"))
+        }
+
+    suspend fun fetchSeriesInfo(
+        host: String, user: String, pass: String, seriesId: Int,
+    ): List<XtreamSeriesEpisode> = withContext(Dispatchers.IO) {
+        parseSeriesEpisodes(
+            get(host, user, pass, "get_series_info&series_id=$seriesId"),
+        )
     }
 
-    /**
-     * Some Xtream servers return a JSONObject (auth failure, account
-     * disabled, expired, banned) where we'd expect a JSONArray of
-     * streams. Parse both shapes and surface a meaningful message
-     * instead of a raw `JSONException` at the call site.
-     */
-    internal fun parseLiveStreams(text: String): List<XtreamLiveStream> {
-        val token = try {
-            JSONTokener(text).nextValue()
-        } catch (e: Exception) {
-            throw IOException(
-                "Server returned non-JSON. First 200 chars: ${text.take(200)}",
-                e,
-            )
+    suspend fun fetchXmltv(host: String, user: String, pass: String): String =
+        withContext(Dispatchers.IO) {
+            val cleanHost = normalizeHost(host)
+            val u = URLEncoder.encode(user, "UTF-8")
+            val p = URLEncoder.encode(pass, "UTF-8")
+            httpGet(URL("$cleanHost/xmltv.php?username=$u&password=$p"))
         }
 
-        return when (token) {
+    fun buildLiveStreamUrl(host: String, user: String, pass: String, streamId: Int): String =
+        "${normalizeHost(host)}/live/$user/$pass/$streamId.m3u8"
+
+    fun buildVodUrl(host: String, user: String, pass: String, streamId: Int, ext: String): String =
+        "${normalizeHost(host)}/movie/$user/$pass/$streamId.${ext.ifBlank { "mp4" }}"
+
+    fun buildSeriesEpisodeUrl(host: String, user: String, pass: String, episodeId: String, ext: String): String =
+        "${normalizeHost(host)}/series/$user/$pass/$episodeId.${ext.ifBlank { "mp4" }}"
+
+    // ---------------- internal ----------------
+
+    private suspend fun fetchCategoriesAction(
+        host: String, user: String, pass: String, action: String,
+    ): List<XtreamCategory> = withContext(Dispatchers.IO) {
+        val text = get(host, user, pass, action)
+        when (val token = JSONTokener(text).nextValue()) {
             is JSONArray -> List(token.length()) { i ->
-                val obj = token.getJSONObject(i)
-                XtreamLiveStream(
-                    streamId = obj.getInt("stream_id"),
-                    name = obj.optString("name", ""),
-                    categoryId = obj.optString("category_id", ""),
+                val o = token.getJSONObject(i)
+                XtreamCategory(
+                    categoryId = o.optString("category_id", ""),
+                    name = o.optString("category_name", ""),
                 )
             }
             is JSONObject -> throw IOException(translateXtreamError(token))
-            else -> throw IOException(
-                "Unexpected JSON shape (${token::class.simpleName}). First 200 chars: ${text.take(200)}",
-            )
+            else -> throw IOException("Unexpected JSON shape for $action")
+        }
+    }
+
+    internal fun parseLiveStreams(text: String): List<XtreamLiveStream> {
+        return when (val token = JSONTokener(text).nextValue()) {
+            is JSONArray -> List(token.length()) { i ->
+                val o = token.getJSONObject(i)
+                XtreamLiveStream(
+                    streamId = o.getInt("stream_id"),
+                    name = o.optString("name", ""),
+                    categoryId = o.optString("category_id", ""),
+                    streamIcon = o.optString("stream_icon", ""),
+                    epgChannelId = o.optString("epg_channel_id", ""),
+                )
+            }
+            is JSONObject -> throw IOException(translateXtreamError(token))
+            else -> throw IOException("Unexpected response — first 200 chars: ${text.take(200)}")
+        }
+    }
+
+    private fun parseVodStreams(text: String): List<XtreamVodStream> {
+        return when (val token = JSONTokener(text).nextValue()) {
+            is JSONArray -> List(token.length()) { i ->
+                val o = token.getJSONObject(i)
+                XtreamVodStream(
+                    streamId = o.getInt("stream_id"),
+                    name = o.optString("name", ""),
+                    categoryId = o.optString("category_id", ""),
+                    streamIcon = o.optString("stream_icon", ""),
+                    containerExtension = o.optString("container_extension", "mp4"),
+                    rating = o.optString("rating", ""),
+                    year = o.optString("year", ""),
+                )
+            }
+            is JSONObject -> throw IOException(translateXtreamError(token))
+            else -> throw IOException("Unexpected VOD response")
+        }
+    }
+
+    private fun parseSeries(text: String): List<XtreamSeries> {
+        return when (val token = JSONTokener(text).nextValue()) {
+            is JSONArray -> List(token.length()) { i ->
+                val o = token.getJSONObject(i)
+                XtreamSeries(
+                    seriesId = o.getInt("series_id"),
+                    name = o.optString("name", ""),
+                    categoryId = o.optString("category_id", ""),
+                    cover = o.optString("cover", ""),
+                    plot = o.optString("plot", ""),
+                    rating = o.optString("rating", ""),
+                    year = o.optString("year", o.optString("releaseDate", "")),
+                )
+            }
+            is JSONObject -> throw IOException(translateXtreamError(token))
+            else -> throw IOException("Unexpected series response")
+        }
+    }
+
+    private fun parseSeriesEpisodes(text: String): List<XtreamSeriesEpisode> {
+        // get_series_info returns { "info": {...}, "episodes": { "1": [...], "2": [...] } }
+        return when (val token = JSONTokener(text).nextValue()) {
+            is JSONObject -> {
+                val episodesNode = token.optJSONObject("episodes") ?: return emptyList()
+                val out = mutableListOf<XtreamSeriesEpisode>()
+                episodesNode.keys().forEach { seasonKey ->
+                    val arr = episodesNode.optJSONArray(seasonKey) ?: return@forEach
+                    val seasonNum = seasonKey.toIntOrNull() ?: 0
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        val info = o.optJSONObject("info") ?: JSONObject()
+                        out += XtreamSeriesEpisode(
+                            episodeId = o.optString("id", ""),
+                            title = o.optString("title", ""),
+                            episodeNum = o.optInt("episode_num", 0),
+                            seasonNum = seasonNum,
+                            containerExtension = o.optString("container_extension", "mp4"),
+                            plot = info.optString("plot", ""),
+                        )
+                    }
+                }
+                out.sortedWith(compareBy({ it.seasonNum }, { it.episodeNum }))
+            }
+            else -> throw IOException("Unexpected series_info response")
         }
     }
 
@@ -97,30 +220,41 @@ object XtreamApi {
             val auth = userInfo.optInt("auth", -1)
             val status = userInfo.optString("status", "")
             val message = userInfo.optString("message", "")
-
             return when {
                 auth == 0 -> "Authentication failed — check username & password"
-                status.equals("Banned", ignoreCase = true) -> "Account banned by provider"
-                status.equals("Disabled", ignoreCase = true) -> "Account disabled by provider"
-                status.equals("Expired", ignoreCase = true) -> "Account expired"
+                status.equals("Banned", true) -> "Account banned by provider"
+                status.equals("Disabled", true) -> "Account disabled by provider"
+                status.equals("Expired", true) -> "Account expired"
                 message.isNotEmpty() -> "Provider says: $message"
                 else -> "Unexpected user_info response (status=$status, auth=$auth)"
             }
         }
-
         val errorMsg = obj.optString("error", "")
             .ifEmpty { obj.optString("message", "") }
             .ifEmpty { obj.toString().take(200) }
         return "Server error: $errorMsg"
     }
 
-    fun buildLiveStreamUrl(
-        host: String,
-        username: String,
-        password: String,
-        streamId: Int,
-    ): String {
+    private fun get(host: String, user: String, pass: String, action: String): String {
         val cleanHost = normalizeHost(host)
-        return "$cleanHost/live/$username/$password/$streamId.m3u8"
+        val u = URLEncoder.encode(user, "UTF-8")
+        val p = URLEncoder.encode(pass, "UTF-8")
+        return httpGet(URL("$cleanHost/player_api.php?username=$u&password=$p&action=$action"))
+    }
+
+    private fun httpGet(url: URL): String {
+        val conn = url.openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 30_000
+            val code = conn.responseCode
+            if (code !in 200..299) throw IOException("HTTP $code from $url")
+            return (conn.inputStream ?: conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() }
+                ?: throw IOException("Empty response from $url")
+        } finally {
+            conn.disconnect()
+        }
     }
 }

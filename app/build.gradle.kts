@@ -69,6 +69,9 @@ dependencies {
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui)
 
+    implementation(libs.coil.compose)
+    implementation(libs.androidx.work.runtime.ktx)
+
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)

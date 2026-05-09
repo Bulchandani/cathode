@@ -5,34 +5,37 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import io.github.bulchandani.cathode.data.store.CredsStore
 import io.github.bulchandani.cathode.ui.hub.HubScreen
 import io.github.bulchandani.cathode.ui.hub.HubTileId
+import io.github.bulchandani.cathode.ui.live.LiveTvScreen
 import io.github.bulchandani.cathode.ui.player.PlayerScreen
 import io.github.bulchandani.cathode.ui.streamtester.StreamTesterScreen
-
-private const val TEST_HLS_URL =
-    "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8"
 
 private sealed interface Screen {
     data object Hub : Screen
     data object StreamTester : Screen
-    data class Player(val url: String, val from: Screen) : Screen
+    data object LiveTv : Screen
+    data class Player(val url: String, val label: String, val from: Screen) : Screen
 }
 
 @Composable
 fun App() {
-    var current by remember { mutableStateOf<Screen>(Screen.Hub) }
+    val context = LocalContext.current
+    val creds = remember { CredsStore(context) }
 
-    var lastUrl by remember { mutableStateOf(TEST_HLS_URL) }
-    var xtreamHost by remember { mutableStateOf("") }
-    var xtreamUser by remember { mutableStateOf("") }
-    var xtreamPass by remember { mutableStateOf("") }
+    var current by remember { mutableStateOf<Screen>(Screen.Hub) }
+    var directUrl by remember { mutableStateOf(creds.lastDirectUrl) }
+    var host by remember { mutableStateOf(creds.host) }
+    var user by remember { mutableStateOf(creds.user) }
+    var pass by remember { mutableStateOf(creds.pass) }
 
     when (val screen = current) {
         Screen.Hub -> HubScreen(
             onTileClick = { tile ->
                 current = when (tile) {
-                    HubTileId.LiveTV -> Screen.Player(TEST_HLS_URL, Screen.Hub)
+                    HubTileId.LiveTV -> if (creds.hasCreds()) Screen.LiveTv else Screen.StreamTester
                     HubTileId.Settings -> Screen.StreamTester
                     else -> Screen.Hub
                 }
@@ -40,25 +43,41 @@ fun App() {
         )
 
         Screen.StreamTester -> StreamTesterScreen(
-            initialUrl = lastUrl,
-            initialHost = xtreamHost,
-            initialUser = xtreamUser,
-            initialPass = xtreamPass,
+            initialUrl = directUrl,
+            initialHost = host,
+            initialUser = user,
+            initialPass = pass,
             onPlay = { url ->
-                lastUrl = url
-                current = Screen.Player(url, Screen.StreamTester)
+                directUrl = url
+                creds.lastDirectUrl = url
+                current = Screen.Player(url, label = url.substringAfterLast('/').take(40), from = Screen.StreamTester)
             },
-            onUrlChange = { lastUrl = it },
+            onUrlChange = {
+                directUrl = it
+                creds.lastDirectUrl = it
+            },
             onCredsChange = { h, u, p ->
-                xtreamHost = h
-                xtreamUser = u
-                xtreamPass = p
+                host = h; user = u; pass = p
+                creds.host = h; creds.user = u; creds.pass = p
             },
             onExit = { current = Screen.Hub },
         )
 
+        Screen.LiveTv -> LiveTvScreen(
+            host = host,
+            user = user,
+            pass = pass,
+            onChannelClick = { url, label ->
+                creds.lastChannelUrl = url
+                current = Screen.Player(url, label, from = Screen.LiveTv)
+            },
+            onExit = { current = Screen.Hub },
+            onOpenSettings = { current = Screen.StreamTester },
+        )
+
         is Screen.Player -> PlayerScreen(
             streamUrl = screen.url,
+            channelLabel = screen.label,
             onExit = { current = screen.from },
         )
     }

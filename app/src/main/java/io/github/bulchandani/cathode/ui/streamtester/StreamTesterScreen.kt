@@ -6,37 +6,39 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamLiveStream
+import io.github.bulchandani.cathode.ui.components.CathodeBox
+import io.github.bulchandani.cathode.ui.components.CathodeButton
+import io.github.bulchandani.cathode.ui.components.CathodeField
+import io.github.bulchandani.cathode.ui.components.CathodeScanlines
+import io.github.bulchandani.cathode.ui.components.CathodeVignette
+import io.github.bulchandani.cathode.ui.theme.AlarmRed
+import io.github.bulchandani.cathode.ui.theme.Amber
+import io.github.bulchandani.cathode.ui.theme.CathodeText
 import io.github.bulchandani.cathode.ui.theme.OffWhite
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreen
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreenDim
-import io.github.bulchandani.cathode.ui.theme.ScanlineOverlay
 import io.github.bulchandani.cathode.ui.theme.Void
 import kotlinx.coroutines.launch
 
@@ -56,199 +58,188 @@ fun StreamTesterScreen(
     var user by remember { mutableStateOf(initialUser) }
     var pass by remember { mutableStateOf(initialPass) }
     var status by remember { mutableStateOf<String?>(null) }
+    var statusIsError by remember { mutableStateOf(false) }
     var channels by remember { mutableStateOf<List<XtreamLiveStream>>(emptyList()) }
 
     val scope = rememberCoroutineScope()
 
     BackHandler(onBack = onExit)
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Void),
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(48.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+    Box(modifier = Modifier.fillMaxSize().background(Void)) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(48.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            item {
-                Text(
-                    text = "SETTINGS",
-                    style = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 48.sp,
-                        letterSpacing = 2.sp,
-                    ),
-                    color = PhosphorGreen,
-                )
-            }
+            Text(
+                text = "SETTINGS",
+                style = CathodeText.Display,
+                color = PhosphorGreen,
+            )
 
-            // ---------- Xtream Codes ----------
-            item {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "XTREAM CODES",
-                    style = sectionStyle(),
-                    color = PhosphorGreen,
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = {
-                        host = it
-                        onCredsChange(it, user, pass)
-                    },
-                    label = { Text("Host (e.g. http://provider.com:8080)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = cathodeFieldColors(),
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = user,
-                    onValueChange = {
-                        user = it
-                        onCredsChange(host, it, pass)
-                    },
-                    label = { Text("Username") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = cathodeFieldColors(),
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = pass,
-                    onValueChange = {
-                        pass = it
-                        onCredsChange(host, user, it)
-                    },
-                    label = { Text("Password") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = cathodeFieldColors(),
-                )
-            }
-            item {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            status = "Fetching channels…"
-                            channels = emptyList()
-                            try {
-                                val list = XtreamApi.fetchLiveStreams(host, user, pass)
-                                channels = list
-                                status = "Found ${list.size} channels — tap one to play"
-                            } catch (t: Throwable) {
-                                status = "Error: ${t.message ?: t::class.simpleName}"
+            Row(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.65f),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+            ) {
+                // Left: Xtream form
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(
+                        text = "XTREAM CODES",
+                        style = CathodeText.Section,
+                        color = PhosphorGreen,
+                    )
+                    CathodeField(
+                        label = "Host",
+                        value = host,
+                        onValueChange = {
+                            host = it
+                            onCredsChange(it, user, pass)
+                        },
+                        placeholder = "http://provider.example.com:8080",
+                    )
+                    CathodeField(
+                        label = "Username",
+                        value = user,
+                        onValueChange = {
+                            user = it
+                            onCredsChange(host, it, pass)
+                        },
+                    )
+                    CathodeField(
+                        label = "Password",
+                        value = pass,
+                        onValueChange = {
+                            pass = it
+                            onCredsChange(host, user, it)
+                        },
+                        password = true,
+                    )
+                    CathodeButton(
+                        text = "FETCH CHANNELS",
+                        onClick = {
+                            scope.launch {
+                                status = "Fetching channels…"
+                                statusIsError = false
+                                channels = emptyList()
+                                try {
+                                    val list = XtreamApi.fetchLiveStreams(host, user, pass)
+                                    channels = list
+                                    status = "Found ${list.size} channels — pick one on the right"
+                                    statusIsError = false
+                                } catch (t: Throwable) {
+                                    status = "Error: ${t.message ?: t::class.simpleName}"
+                                    statusIsError = true
+                                }
+                            }
+                        },
+                        enabled = host.isNotBlank() && user.isNotBlank() && pass.isNotBlank(),
+                    )
+                    status?.let { s ->
+                        Text(
+                            text = s,
+                            style = CathodeText.Data,
+                            color = if (statusIsError) AlarmRed else Amber,
+                        )
+                    }
+                }
+
+                // Right: Channel list
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "CHANNELS",
+                        style = CathodeText.Section,
+                        color = if (channels.isEmpty()) PhosphorGreenDim else PhosphorGreen,
+                    )
+                    if (channels.isEmpty()) {
+                        Text(
+                            text = "Fetch with credentials on the left.",
+                            style = CathodeText.Data,
+                            color = PhosphorGreenDim,
+                        )
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                        ) {
+                            items(channels.take(200), key = { it.streamId }) { ch ->
+                                ChannelRow(
+                                    name = ch.name.ifBlank { "Channel ${ch.streamId}" },
+                                    streamId = ch.streamId,
+                                    onClick = {
+                                        onPlay(
+                                            XtreamApi.buildLiveStreamUrl(
+                                                host, user, pass, ch.streamId,
+                                            ),
+                                        )
+                                    },
+                                )
                             }
                         }
-                    },
-                    enabled = host.isNotBlank() && user.isNotBlank() && pass.isNotBlank(),
-                    colors = cathodeButtonColors(),
-                ) {
-                    Text("FETCH CHANNELS", fontWeight = FontWeight.Bold)
-                }
-            }
-            status?.let { s ->
-                item {
-                    Text(
-                        text = s,
-                        style = monoSmall(),
-                        color = if (s.startsWith("Error")) PhosphorGreenDim else OffWhite,
-                    )
-                }
-            }
-            items(channels.take(50), key = { it.streamId }) { ch ->
-                Button(
-                    onClick = {
-                        onPlay(XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId))
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = cathodeButtonColors(),
-                ) {
-                    Text(
-                        text = ch.name.ifBlank { "Channel ${ch.streamId}" },
-                        fontWeight = FontWeight.Bold,
-                    )
+                    }
                 }
             }
 
-            // ---------- Direct URL ----------
-            item {
-                Spacer(Modifier.height(32.dp))
-                Text(
-                    text = "OR PASTE A DIRECT URL",
-                    style = sectionStyle(),
-                    color = PhosphorGreen,
-                )
-            }
-            item {
-                Text(
-                    text = "HLS / DASH / MPEG-TS — Apple Bip-Bop default works without an account.",
-                    style = monoSmall(),
-                    color = OffWhite,
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = {
-                        url = it
-                        onUrlChange(it)
-                    },
-                    label = { Text("Stream URL") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = cathodeFieldColors(),
-                )
-            }
-            item {
-                Button(
+            Text(
+                text = "—  OR PASTE A DIRECT URL  —",
+                style = CathodeText.Section,
+                color = PhosphorGreenDim,
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    CathodeField(
+                        label = "Stream URL",
+                        value = url,
+                        onValueChange = {
+                            url = it
+                            onUrlChange(it)
+                        },
+                        placeholder = "https://…/master.m3u8",
+                    )
+                }
+                CathodeButton(
+                    text = "PLAY",
                     onClick = { onPlay(url.trim()) },
                     enabled = url.isNotBlank(),
-                    colors = cathodeButtonColors(),
-                ) {
-                    Text("PLAY URL", fontWeight = FontWeight.Bold)
-                }
+                )
             }
         }
-        ScanlineOverlay()
+
+        CathodeScanlines()
+        CathodeVignette()
     }
 }
 
-private fun sectionStyle() = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontWeight = FontWeight.Bold,
-    fontSize = 24.sp,
-    letterSpacing = 1.sp,
-)
-
-private fun monoSmall() = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 14.sp,
-)
-
 @Composable
-private fun cathodeFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = PhosphorGreen,
-    unfocusedBorderColor = PhosphorGreenDim,
-    focusedTextColor = OffWhite,
-    unfocusedTextColor = OffWhite,
-    focusedLabelColor = PhosphorGreen,
-    unfocusedLabelColor = PhosphorGreenDim,
-    cursorColor = PhosphorGreen,
-)
-
-@Composable
-private fun cathodeButtonColors() = ButtonDefaults.buttonColors(
-    containerColor = PhosphorGreen,
-    contentColor = Void,
-    disabledContainerColor = PhosphorGreenDim,
-    disabledContentColor = OffWhite,
-)
+private fun ChannelRow(name: String, streamId: Int, onClick: () -> Unit) {
+    CathodeBox(
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "%04d".format(streamId),
+                style = CathodeText.Data,
+                color = Amber,
+                modifier = Modifier.width(56.dp),
+            )
+            Text(
+                text = name,
+                style = CathodeText.Body,
+                color = OffWhite,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}

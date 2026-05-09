@@ -1,5 +1,7 @@
 package io.github.bulchandani.cathode.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalInspectionMode
 import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.bulchandani.cathode.ui.hub.HubScreen
 import io.github.bulchandani.cathode.ui.theme.CathodeTheme
@@ -23,8 +25,10 @@ class HubScreenSnapshotTest {
     @Test
     fun hubScreen_default() {
         captureRoboImage(filePath = "build/outputs/roborazzi/hub_default.png") {
-            CathodeTheme {
-                HubScreen()
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                CathodeTheme {
+                    HubScreen()
+                }
             }
         }
     }

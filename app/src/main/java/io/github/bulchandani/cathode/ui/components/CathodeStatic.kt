@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalInspectionMode
 import kotlin.random.Random
 
 /**
@@ -35,8 +36,14 @@ fun CathodeStatic(
     if (!visible) return
 
     var tick by remember { mutableStateOf(0) }
+    val inInspection = LocalInspectionMode.current
 
-    LaunchedEffect(visible) {
+    LaunchedEffect(visible, inInspection) {
+        if (inInspection) {
+            // Render one frame of noise; don't busy-loop, don't auto-complete.
+            tick = 1
+            return@LaunchedEffect
+        }
         val start = System.nanoTime()
         val durationNanos = durationMs.toLong() * 1_000_000L
         while (System.nanoTime() - start < durationNanos) {

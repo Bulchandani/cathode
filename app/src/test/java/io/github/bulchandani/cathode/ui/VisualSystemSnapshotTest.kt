@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -51,6 +53,7 @@ class VisualSystemSnapshotTest {
     @Test
     fun visualSystem() {
         captureRoboImage(filePath = "build/outputs/roborazzi/visual_system.png") {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
             CathodeTheme {
                 Box(modifier = Modifier.fillMaxSize().background(Void)) {
                     Column(
@@ -134,6 +137,7 @@ class VisualSystemSnapshotTest {
                     CathodeScanlines()
                     CathodeVignette()
                 }
+            }
             }
         }
     }

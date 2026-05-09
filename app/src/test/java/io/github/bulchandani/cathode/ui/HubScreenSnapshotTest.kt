@@ -1,11 +1,8 @@
 package io.github.bulchandani.cathode.ui
 
-import androidx.compose.ui.test.junit4.createComposeRule
-import com.github.takahirom.roborazzi.RoborazziRule
 import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.bulchandani.cathode.ui.hub.HubScreen
 import io.github.bulchandani.cathode.ui.theme.CathodeTheme
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -23,18 +20,12 @@ import org.robolectric.annotation.GraphicsMode
 @Config(qualifiers = "w1920dp-h1080dp-television-xhdpi")
 class HubScreenSnapshotTest {
 
-    @get:Rule
-    val composeRule = createComposeRule()
-
     @Test
     fun hubScreen_default() {
-        composeRule.setContent {
+        captureRoboImage(filePath = "build/outputs/roborazzi/hub_default.png") {
             CathodeTheme {
                 HubScreen()
             }
         }
-        composeRule
-            .onRoot()
-            .captureRoboImage("build/outputs/roborazzi/hub_default.png")
     }
 }

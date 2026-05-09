@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.epg.EpgRepo
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
@@ -76,6 +77,7 @@ fun LiveTvScreen(
             error = null
             categories = XtreamApi.fetchLiveCategories(host, user, pass)
             allChannels = XtreamApi.fetchLiveStreams(host, user, pass)
+            CatalogRepo.setLive(allChannels)
             loading = false
         } catch (t: Throwable) {
             error = t.message ?: "Failed to load"

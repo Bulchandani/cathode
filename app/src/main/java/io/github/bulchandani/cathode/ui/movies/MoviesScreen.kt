@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
 import io.github.bulchandani.cathode.data.xtream.XtreamVodStream
@@ -70,6 +71,7 @@ fun MoviesScreen(
         try {
             categories = XtreamApi.fetchVodCategories(host, user, pass)
             allMovies = XtreamApi.fetchVodStreams(host, user, pass)
+            CatalogRepo.setVod(allMovies)
             loading = false
         } catch (t: Throwable) { error = t.message; loading = false }
     }

@@ -1,7 +1,8 @@
 package io.github.bulchandani.cathode.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -21,16 +22,17 @@ import io.github.bulchandani.cathode.ui.theme.DimGrey
 private val DefaultShape = RoundedCornerShape(8.dp)
 
 /**
- * Base Cathode container — DimGrey fill, rounded corners, dim border by default,
- * pulsing phosphor glow when focused.
- *
- * Pass `onClick` to make it interactive (D-pad SELECT / touch tap both fire).
+ * Base Cathode container. Tap fires `onClick`; long-press (hold OK on
+ * a TV remote / long-press on touch) fires `onLongClick`. Pulsing
+ * phosphor glow on D-pad / keyboard / hover focus.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CathodeBox(
     modifier: Modifier = Modifier,
     shape: Shape = DefaultShape,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -40,8 +42,13 @@ fun CathodeBox(
         .cathodeGlow(focused = focused, shape = shape)
         .onFocusChanged { focused = it.isFocused }
 
-    val finalModifier = if (onClick != null) {
-        baseModifier.focusable().clickable(onClick = onClick)
+    val finalModifier = if (onClick != null || onLongClick != null) {
+        baseModifier
+            .focusable()
+            .combinedClickable(
+                onClick = { onClick?.invoke() },
+                onLongClick = onLongClick,
+            )
     } else {
         baseModifier
     }

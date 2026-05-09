@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
 import io.github.bulchandani.cathode.data.xtream.XtreamSeries
@@ -70,6 +71,7 @@ fun SeriesScreen(
         try {
             categories = XtreamApi.fetchSeriesCategories(host, user, pass)
             allSeries = XtreamApi.fetchSeries(host, user, pass)
+            CatalogRepo.setSeries(allSeries)
             loading = false
         } catch (t: Throwable) { error = t.message; loading = false }
     }

@@ -1,0 +1,43 @@
+# Built artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+build/
+out/
+bin/
+gen/
+
+# Gradle
+.gradle/
+local.properties
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+.gradletasknamecache
+captures/
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+.navigation/
+.cxx/
+
+# Keystore
+*.jks
+*.keystore
+keystore.properties
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+/coverage/
+
+# Misc
+*.bak

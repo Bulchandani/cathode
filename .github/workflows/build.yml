@@ -28,6 +28,9 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Render UI snapshots
+        run: ./gradlew :app:recordRoborazziDebug --no-daemon --stacktrace
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -35,3 +38,11 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
           if-no-files-found: error
+
+      - name: Upload UI snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: cathode-ui-snapshots
+          path: app/build/outputs/roborazzi/*.png
+          retention-days: 30
+          if-no-files-found: warn

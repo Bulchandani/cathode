@@ -12,6 +12,7 @@ import io.github.bulchandani.cathode.data.catalog.RecentItem
 import io.github.bulchandani.cathode.data.catalog.RecentsStore
 import io.github.bulchandani.cathode.data.store.CredsStore
 import io.github.bulchandani.cathode.data.xtream.XtreamSeries
+import io.github.bulchandani.cathode.ui.favorites.FavoritesScreen
 import io.github.bulchandani.cathode.ui.hub.HubScreen
 import io.github.bulchandani.cathode.ui.hub.HubTileId
 import io.github.bulchandani.cathode.ui.live.LiveTvScreen
@@ -31,6 +32,7 @@ private sealed interface Screen {
     data object Series : Screen
     data object Search : Screen
     data object Recents : Screen
+    data object Favorites : Screen
     data class SeriesDetail(val series: XtreamSeries) : Screen
     data class Player(
         val url: String,
@@ -73,7 +75,7 @@ fun App() {
                     HubTileId.Search -> Screen.Search
                     HubTileId.Recents -> Screen.Recents
                     HubTileId.Settings -> Screen.StreamTester
-                    HubTileId.Favorites -> Screen.Hub  // wired in v0.6.0
+                    HubTileId.Favorites -> Screen.Favorites
                 }
             },
         )
@@ -173,6 +175,26 @@ fun App() {
                 val match = CatalogRepo.series.firstOrNull { it.seriesId == id }
                 if (match != null) current = Screen.SeriesDetail(match)
             },
+            onExit = { current = Screen.Hub },
+        )
+
+        Screen.Favorites -> FavoritesScreen(
+            host = host, user = user, pass = pass,
+            onPlayLive = { url, label, epgId ->
+                val id = streamIdFromUrl(url, LIVE_ID_REGEX)
+                goToPlayer(
+                    Screen.Player(url, label, epgId, from = Screen.Favorites),
+                    recent = RecentItem(ContentKind.Live, id, label, url, System.currentTimeMillis()),
+                )
+            },
+            onPlayMovie = { url, label ->
+                val id = streamIdFromUrl(url, VOD_ID_REGEX)
+                goToPlayer(
+                    Screen.Player(url, label, "", from = Screen.Favorites),
+                    recent = RecentItem(ContentKind.Movie, id, label, url, System.currentTimeMillis()),
+                )
+            },
+            onOpenSeries = { current = Screen.SeriesDetail(it) },
             onExit = { current = Screen.Hub },
         )
 

@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.bulchandani.cathode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.1.0-rc2"
+        versionCode = 60
+        versionName = "0.6.0"
     }
 
     buildTypes {

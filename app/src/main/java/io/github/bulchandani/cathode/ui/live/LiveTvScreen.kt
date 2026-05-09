@@ -26,10 +26,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
+import io.github.bulchandani.cathode.data.catalog.ContentKind
+import io.github.bulchandani.cathode.data.catalog.FavoriteItem
+import io.github.bulchandani.cathode.data.catalog.FavoritesStore
 import io.github.bulchandani.cathode.data.epg.EpgRepo
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
@@ -232,6 +236,8 @@ private fun ChannelColumn(
     onChannelClick: (streamUrl: String, channelLabel: String, epgChannelId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val favs = remember { FavoritesStore(context) }
     Column(modifier = modifier) {
         Text("CHANNELS", style = CathodeText.Section, color = PhosphorGreen)
         Spacer(Modifier.height(8.dp))
@@ -251,6 +257,9 @@ private fun ChannelColumn(
                             val label = "%04d  %s".format(ch.streamId, ch.name.ifBlank { "Channel ${ch.streamId}" })
                             onChannelClick(url, label, ch.epgChannelId)
                         },
+                        onLongClick = {
+                            favs.toggle(FavoriteItem(ContentKind.Live, ch.streamId, ch.name))
+                        },
                     )
                 }
             }
@@ -259,13 +268,14 @@ private fun ChannelColumn(
 }
 
 @Composable
-private fun ChannelRow(channel: XtreamLiveStream, onClick: () -> Unit) {
+private fun ChannelRow(channel: XtreamLiveStream, onClick: () -> Unit, onLongClick: () -> Unit) {
     val (now, _) = remember(channel.epgChannelId, EpgRepo.isReady()) {
         EpgRepo.nowAndNext(channel.epgChannelId)
     }
     CathodeBox(
         modifier = Modifier.fillMaxWidth().height(64.dp),
         onClick = onClick,
+        onLongClick = onLongClick,
     ) {
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),

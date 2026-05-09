@@ -24,10 +24,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
+import io.github.bulchandani.cathode.BuildConfig
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamLiveStream
+import io.github.bulchandani.cathode.update.UpdateChecker
 import io.github.bulchandani.cathode.ui.components.CathodeBox
 import io.github.bulchandani.cathode.ui.components.CathodeButton
 import io.github.bulchandani.cathode.ui.components.CathodeField
@@ -60,7 +63,9 @@ fun StreamTesterScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsError by remember { mutableStateOf(false) }
     var channels by remember { mutableStateOf<List<XtreamLiveStream>>(emptyList()) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
 
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     BackHandler(onBack = onExit)
@@ -210,6 +215,35 @@ fun StreamTesterScreen(
                     enabled = url.isNotBlank(),
                 )
             }
+
+            Spacer(Modifier.height(16.dp))
+            Text("—  ABOUT  —", style = CathodeText.Section, color = PhosphorGreenDim)
+            Text("Cathode v${BuildConfig.VERSION_NAME}", style = CathodeText.Body, color = OffWhite)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                CathodeButton(
+                    text = "CHECK FOR UPDATES",
+                    onClick = {
+                        scope.launch {
+                            updateStatus = "Checking…"
+                            try {
+                                val info = UpdateChecker.fetchLatest()
+                                updateStatus = when {
+                                    info == null -> "Couldn't reach GitHub Releases."
+                                    UpdateChecker.isNewer(info.tagName) -> {
+                                        val apk = UpdateChecker.downloadApk(context, info.apkUrl)
+                                        UpdateChecker.installApk(context, apk)
+                                        "Installing ${info.tagName}…"
+                                    }
+                                    else -> "You're on the latest (${info.tagName})."
+                                }
+                            } catch (t: Throwable) {
+                                updateStatus = "Update error: ${t.message}"
+                            }
+                        }
+                    },
+                )
+            }
+            updateStatus?.let { Text(it, style = CathodeText.Data, color = Amber) }
         }
 
         CathodeScanlines()

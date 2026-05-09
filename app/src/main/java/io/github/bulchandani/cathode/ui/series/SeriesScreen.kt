@@ -29,10 +29,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
+import io.github.bulchandani.cathode.data.catalog.ContentKind
+import io.github.bulchandani.cathode.data.catalog.FavoriteItem
+import io.github.bulchandani.cathode.data.catalog.FavoritesStore
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
 import io.github.bulchandani.cathode.data.xtream.XtreamSeries
@@ -109,13 +113,21 @@ fun SeriesScreen(
                             }
                         }
                     }
+                    val context = LocalContext.current
+                    val favs = remember { FavoritesStore(context) }
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(220.dp),
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        items(display, key = { it.seriesId }) { s -> SeriesPoster(s) { onSeriesClick(s) } }
+                        items(display, key = { it.seriesId }) { s ->
+                            SeriesPoster(
+                                s = s,
+                                onClick = { onSeriesClick(s) },
+                                onLongClick = { favs.toggle(FavoriteItem(ContentKind.Series, s.seriesId, s.name)) },
+                            )
+                        }
                     }
                 }
             }
@@ -136,8 +148,12 @@ private fun CatRow(label: String, count: Int, selected: Boolean, onClick: () -> 
 }
 
 @Composable
-private fun SeriesPoster(s: XtreamSeries, onClick: () -> Unit) {
-    CathodeBox(modifier = Modifier.size(width = 220.dp, height = 180.dp), onClick = onClick) {
+private fun SeriesPoster(s: XtreamSeries, onClick: () -> Unit, onLongClick: () -> Unit) {
+    CathodeBox(
+        modifier = Modifier.size(width = 220.dp, height = 180.dp),
+        onClick = onClick,
+        onLongClick = onLongClick,
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(DimGrey),
                 contentAlignment = Alignment.Center) {

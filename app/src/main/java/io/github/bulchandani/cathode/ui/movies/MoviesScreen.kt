@@ -29,10 +29,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
+import io.github.bulchandani.cathode.data.catalog.ContentKind
+import io.github.bulchandani.cathode.data.catalog.FavoriteItem
+import io.github.bulchandani.cathode.data.catalog.FavoritesStore
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
 import io.github.bulchandani.cathode.data.xtream.XtreamVodStream
@@ -106,6 +110,8 @@ fun MoviesScreen(
                         onSelect = { selectedCat = it },
                         modifier = Modifier.width(260.dp).fillMaxHeight(),
                     )
+                    val context = LocalContext.current
+                    val favs = remember { FavoritesStore(context) }
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(180.dp),
                         modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -113,11 +119,17 @@ fun MoviesScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         items(display, key = { it.streamId }) { m ->
-                            MoviePoster(m) {
-                                val url = XtreamApi.buildVodUrl(host, user, pass, m.streamId, m.containerExtension)
-                                val label = m.name.ifBlank { "Movie ${m.streamId}" }
-                                onMovieClick(url, label)
-                            }
+                            MoviePoster(
+                                movie = m,
+                                onClick = {
+                                    val url = XtreamApi.buildVodUrl(host, user, pass, m.streamId, m.containerExtension)
+                                    val label = m.name.ifBlank { "Movie ${m.streamId}" }
+                                    onMovieClick(url, label)
+                                },
+                                onLongClick = {
+                                    favs.toggle(FavoriteItem(ContentKind.Movie, m.streamId, m.name))
+                                },
+                            )
                         }
                     }
                 }
@@ -162,8 +174,12 @@ private fun CatRow(label: String, count: Int, selected: Boolean, onClick: () -> 
 }
 
 @Composable
-private fun MoviePoster(movie: XtreamVodStream, onClick: () -> Unit) {
-    CathodeBox(modifier = Modifier.size(width = 180.dp, height = 290.dp), onClick = onClick) {
+private fun MoviePoster(movie: XtreamVodStream, onClick: () -> Unit, onLongClick: () -> Unit) {
+    CathodeBox(
+        modifier = Modifier.size(width = 180.dp, height = 290.dp),
+        onClick = onClick,
+        onLongClick = onLongClick,
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(DimGrey),
                 contentAlignment = Alignment.Center) {

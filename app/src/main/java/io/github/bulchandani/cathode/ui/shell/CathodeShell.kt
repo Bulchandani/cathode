@@ -32,6 +32,7 @@ import io.github.bulchandani.cathode.BuildConfig
 import io.github.bulchandani.cathode.data.epg.EpgRepo
 import io.github.bulchandani.cathode.ui.components.CathodeScanlines
 import io.github.bulchandani.cathode.ui.components.CathodeVignette
+import io.github.bulchandani.cathode.ui.components.ToasterHost
 import io.github.bulchandani.cathode.ui.components.cathodeGlow
 import io.github.bulchandani.cathode.ui.theme.Amber
 import io.github.bulchandani.cathode.ui.theme.CathodeText
@@ -72,6 +73,7 @@ fun CathodeShell(
         }
         CathodeScanlines()
         CathodeVignette()
+        ToasterHost()
     }
 }
 

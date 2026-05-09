@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.catalog.ContentKind
+import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
 import io.github.bulchandani.cathode.data.catalog.RecentItem
 import io.github.bulchandani.cathode.data.catalog.RecentsStore
 import io.github.bulchandani.cathode.data.store.CredsStore
@@ -45,6 +46,7 @@ fun App() {
     val context = LocalContext.current
     val creds = remember { CredsStore(context) }
     val recents = remember { RecentsStore(context) }
+    remember { FavoritesRepo.init(context); Unit }
 
     val initialSection = if (creds.hasCreds()) ShellSection.LiveTv else ShellSection.Settings
     var section by remember { mutableStateOf(initialSection) }

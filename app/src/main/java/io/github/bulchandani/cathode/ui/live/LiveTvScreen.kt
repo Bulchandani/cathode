@@ -33,7 +33,8 @@ import coil.compose.AsyncImage
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.catalog.ContentKind
 import io.github.bulchandani.cathode.data.catalog.FavoriteItem
-import io.github.bulchandani.cathode.data.catalog.FavoritesStore
+import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
+import io.github.bulchandani.cathode.ui.components.Toaster
 import io.github.bulchandani.cathode.data.epg.EpgRepo
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
@@ -234,8 +235,6 @@ private fun ChannelColumn(
     onChannelClick: (streamUrl: String, channelLabel: String, epgChannelId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val favs = remember { FavoritesStore(context) }
     Column(modifier = modifier) {
         Text("CHANNELS", style = CathodeText.Section, color = PhosphorGreen)
         Spacer(Modifier.height(8.dp))
@@ -256,7 +255,8 @@ private fun ChannelColumn(
                             onChannelClick(url, label, ch.epgChannelId)
                         },
                         onLongClick = {
-                            favs.toggle(FavoriteItem(ContentKind.Live, ch.streamId, ch.name))
+                            val pinned = FavoritesRepo.toggle(FavoriteItem(ContentKind.Live, ch.streamId, ch.name))
+                            Toaster.show(if (pinned) "★ Pinned: ${ch.name}" else "☆ Removed: ${ch.name}")
                         },
                     )
                 }
@@ -270,6 +270,7 @@ private fun ChannelRow(channel: XtreamLiveStream, onClick: () -> Unit, onLongCli
     val (now, _) = remember(channel.epgChannelId, EpgRepo.isReady()) {
         EpgRepo.nowAndNext(channel.epgChannelId)
     }
+    val isFavorite = FavoritesRepo.items.value.any { it.kind == ContentKind.Live && it.id == channel.streamId }
     CathodeBox(
         modifier = Modifier.fillMaxWidth().height(64.dp),
         onClick = onClick,
@@ -316,6 +317,9 @@ private fun ChannelRow(channel: XtreamLiveStream, onClick: () -> Unit, onLongCli
                         color = PhosphorGreenDim,
                     )
                 }
+            }
+            if (isFavorite) {
+                Text("★", style = CathodeText.Section, color = Amber)
             }
         }
     }

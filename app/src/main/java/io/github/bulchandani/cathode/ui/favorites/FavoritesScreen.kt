@@ -26,7 +26,8 @@ import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.catalog.ContentKind
 import io.github.bulchandani.cathode.data.catalog.FavoriteItem
-import io.github.bulchandani.cathode.data.catalog.FavoritesStore
+import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
+import io.github.bulchandani.cathode.ui.components.Toaster
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamSeries
 import io.github.bulchandani.cathode.ui.components.CathodeBox
@@ -49,9 +50,7 @@ fun FavoritesScreen(
     onOpenSeries: (XtreamSeries) -> Unit,
     onExit: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val store = remember { FavoritesStore(context) }
-    var items by remember { mutableStateOf(store.all()) }
+    val items by FavoritesRepo.items
 
     BackHandler(onBack = onExit)
 
@@ -96,8 +95,8 @@ fun FavoritesScreen(
                                 }
                             },
                             onUnpin = {
-                                store.toggle(f)
-                                items = store.all()
+                                FavoritesRepo.toggle(f)
+                                Toaster.show("☆ Removed: ${f.name}")
                             },
                         )
                     }

@@ -36,7 +36,8 @@ import coil.compose.AsyncImage
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.catalog.ContentKind
 import io.github.bulchandani.cathode.data.catalog.FavoriteItem
-import io.github.bulchandani.cathode.data.catalog.FavoritesStore
+import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
+import io.github.bulchandani.cathode.ui.components.Toaster
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
 import io.github.bulchandani.cathode.data.xtream.XtreamSeries
@@ -113,10 +114,8 @@ fun SeriesScreen(
                             }
                         }
                     }
-                    val context = LocalContext.current
-                    val favs = remember { FavoritesStore(context) }
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(220.dp),
+                        columns = GridCells.Adaptive(200.dp),
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -125,7 +124,10 @@ fun SeriesScreen(
                             SeriesPoster(
                                 s = s,
                                 onClick = { onSeriesClick(s) },
-                                onLongClick = { favs.toggle(FavoriteItem(ContentKind.Series, s.seriesId, s.name)) },
+                                onLongClick = {
+                                    val pinned = FavoritesRepo.toggle(FavoriteItem(ContentKind.Series, s.seriesId, s.name))
+                                    Toaster.show(if (pinned) "★ Pinned: ${s.name}" else "☆ Removed: ${s.name}")
+                                },
                             )
                         }
                     }
@@ -147,8 +149,9 @@ private fun CatRow(label: String, count: Int, selected: Boolean, onClick: () -> 
 
 @Composable
 private fun SeriesPoster(s: XtreamSeries, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val isFavorite = FavoritesRepo.items.value.any { it.kind == ContentKind.Series && it.id == s.seriesId }
     CathodeBox(
-        modifier = Modifier.size(width = 220.dp, height = 180.dp),
+        modifier = Modifier.size(width = 200.dp, height = 300.dp),
         onClick = onClick,
         onLongClick = onLongClick,
     ) {
@@ -159,6 +162,14 @@ private fun SeriesPoster(s: XtreamSeries, onClick: () -> Unit, onLongClick: () -
                     AsyncImage(model = s.cover, contentDescription = null, modifier = Modifier.fillMaxSize())
                 } else {
                     Text("▣", style = CathodeText.Display, color = PhosphorGreenDim)
+                }
+                if (isFavorite) {
+                    Text(
+                        "★",
+                        style = CathodeText.Section,
+                        color = Amber,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                    )
                 }
             }
             Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {

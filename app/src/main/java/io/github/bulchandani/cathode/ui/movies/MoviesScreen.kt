@@ -36,7 +36,8 @@ import coil.compose.AsyncImage
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.catalog.ContentKind
 import io.github.bulchandani.cathode.data.catalog.FavoriteItem
-import io.github.bulchandani.cathode.data.catalog.FavoritesStore
+import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
+import io.github.bulchandani.cathode.ui.components.Toaster
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
 import io.github.bulchandani.cathode.data.xtream.XtreamVodStream
@@ -110,10 +111,8 @@ fun MoviesScreen(
                         onSelect = { selectedCat = it },
                         modifier = Modifier.width(260.dp).fillMaxHeight(),
                     )
-                    val context = LocalContext.current
-                    val favs = remember { FavoritesStore(context) }
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(180.dp),
+                        columns = GridCells.Adaptive(200.dp),
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -127,7 +126,8 @@ fun MoviesScreen(
                                     onMovieClick(url, label)
                                 },
                                 onLongClick = {
-                                    favs.toggle(FavoriteItem(ContentKind.Movie, m.streamId, m.name))
+                                    val pinned = FavoritesRepo.toggle(FavoriteItem(ContentKind.Movie, m.streamId, m.name))
+                                    Toaster.show(if (pinned) "★ Pinned: ${m.name}" else "☆ Removed: ${m.name}")
                                 },
                             )
                         }
@@ -173,8 +173,9 @@ private fun CatRow(label: String, count: Int, selected: Boolean, onClick: () -> 
 
 @Composable
 private fun MoviePoster(movie: XtreamVodStream, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val isFavorite = FavoritesRepo.items.value.any { it.kind == ContentKind.Movie && it.id == movie.streamId }
     CathodeBox(
-        modifier = Modifier.size(width = 180.dp, height = 290.dp),
+        modifier = Modifier.size(width = 200.dp, height = 300.dp),
         onClick = onClick,
         onLongClick = onLongClick,
     ) {
@@ -185,6 +186,14 @@ private fun MoviePoster(movie: XtreamVodStream, onClick: () -> Unit, onLongClick
                     AsyncImage(model = movie.streamIcon, contentDescription = null, modifier = Modifier.fillMaxSize())
                 } else {
                     Text("◉", style = CathodeText.Display, color = PhosphorGreenDim)
+                }
+                if (isFavorite) {
+                    Text(
+                        "★",
+                        style = CathodeText.Section,
+                        color = Amber,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                    )
                 }
             }
             Column(modifier = Modifier.padding(8.dp)) {

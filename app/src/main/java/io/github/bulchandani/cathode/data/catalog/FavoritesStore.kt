@@ -1,6 +1,9 @@
 package io.github.bulchandani.cathode.data.catalog
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
@@ -21,12 +24,45 @@ data class RecentItem(
     val lastPlayedAt: Long,
 )
 
-class FavoritesStore(context: Context) {
-    private val prefs = context.applicationContext
-        .getSharedPreferences("cathode_favorites", Context.MODE_PRIVATE)
+/**
+ * Process-wide reactive favorites store. Read [items] inside any
+ * Composable; calls to [toggle] from anywhere in the app trigger
+ * recomposition of every reader. Persists to SharedPreferences.
+ */
+object FavoritesRepo {
+    private val _items = mutableStateOf<List<FavoriteItem>>(emptyList())
+    val items: State<List<FavoriteItem>> = _items
 
-    fun all(): List<FavoriteItem> {
-        val arr = JSONArray(prefs.getString(KEY, "[]") ?: "[]")
+    private var prefs: SharedPreferences? = null
+
+    fun init(context: Context) {
+        if (prefs != null) return
+        prefs = context.applicationContext.getSharedPreferences("cathode_favorites", Context.MODE_PRIVATE)
+        _items.value = readFromPrefs()
+    }
+
+    fun isFavorite(kind: ContentKind, id: Int): Boolean =
+        _items.value.any { it.kind == kind && it.id == id }
+
+    /** Returns true if the item is now pinned, false if it was un-pinned. */
+    fun toggle(item: FavoriteItem): Boolean {
+        val list = _items.value.toMutableList()
+        val idx = list.indexOfFirst { it.kind == item.kind && it.id == item.id }
+        val pinned: Boolean
+        if (idx >= 0) {
+            list.removeAt(idx)
+            pinned = false
+        } else {
+            list.add(item)
+            pinned = true
+        }
+        _items.value = list
+        writeToPrefs(list)
+        return pinned
+    }
+
+    private fun readFromPrefs(): List<FavoriteItem> {
+        val arr = JSONArray(prefs?.getString(KEY, "[]") ?: "[]")
         return List(arr.length()) { i ->
             val o = arr.getJSONObject(i)
             FavoriteItem(
@@ -37,17 +73,7 @@ class FavoritesStore(context: Context) {
         }
     }
 
-    fun isFavorite(kind: ContentKind, id: Int): Boolean =
-        all().any { it.kind == kind && it.id == id }
-
-    fun toggle(item: FavoriteItem) {
-        val current = all().toMutableList()
-        val existing = current.indexOfFirst { it.kind == item.kind && it.id == item.id }
-        if (existing >= 0) current.removeAt(existing) else current.add(item)
-        save(current)
-    }
-
-    private fun save(list: List<FavoriteItem>) {
+    private fun writeToPrefs(list: List<FavoriteItem>) {
         val arr = JSONArray()
         list.forEach { f ->
             arr.put(JSONObject().apply {
@@ -56,10 +82,19 @@ class FavoritesStore(context: Context) {
                 put("name", f.name)
             })
         }
-        prefs.edit { putString(KEY, arr.toString()) }
+        prefs?.edit { putString(KEY, arr.toString()) }
     }
 
-    companion object { private const val KEY = "list" }
+    private const val KEY = "list"
+}
+
+/** Old class shim — kept so existing callers compile while we migrate. */
+@Deprecated("Use FavoritesRepo singleton")
+class FavoritesStore(context: Context) {
+    init { FavoritesRepo.init(context) }
+    fun all(): List<FavoriteItem> = FavoritesRepo.items.value
+    fun isFavorite(kind: ContentKind, id: Int): Boolean = FavoritesRepo.isFavorite(kind, id)
+    fun toggle(item: FavoriteItem) { FavoritesRepo.toggle(item) }
 }
 
 class RecentsStore(context: Context) {

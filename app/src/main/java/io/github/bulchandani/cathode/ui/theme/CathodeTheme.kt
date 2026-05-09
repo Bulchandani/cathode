@@ -1,17 +1,15 @@
 package io.github.bulchandani.cathode.ui.theme
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
+import io.github.bulchandani.cathode.ui.components.CathodeScanlines
 
 enum class CrtMode { FullVintage, Moderate, ModernDark }
 
-val LocalCrtMode = staticCompositionLocalOf { CrtMode.Moderate }
+val LocalCrtMode = staticCompositionLocalOf { CrtMode.FullVintage }
 
 private val CathodeColorScheme = darkColorScheme(
     primary = PhosphorGreen,
@@ -28,7 +26,7 @@ private val CathodeColorScheme = darkColorScheme(
 
 @Composable
 fun CathodeTheme(
-    mode: CrtMode = CrtMode.Moderate,
+    mode: CrtMode = CrtMode.FullVintage,
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(
@@ -38,19 +36,12 @@ fun CathodeTheme(
     )
 }
 
+/**
+ * Backwards-compat shim. Phase-1 introduced [CathodeScanlines] (8% alpha,
+ * full vintage). Old screens still calling `ScanlineOverlay()` get the
+ * new behavior automatically until they're rewritten in Phase 2.
+ */
 @Composable
 fun ScanlineOverlay(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val step = 4f
-        var y = 0f
-        while (y < size.height) {
-            drawLine(
-                color = ScanlineWhite,
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1f,
-            )
-            y += step
-        }
-    }
+    CathodeScanlines(modifier = modifier)
 }

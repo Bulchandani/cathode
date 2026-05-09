@@ -17,7 +17,7 @@ private sealed interface Screen {
     data object Hub : Screen
     data object StreamTester : Screen
     data object LiveTv : Screen
-    data class Player(val url: String, val label: String, val from: Screen) : Screen
+    data class Player(val url: String, val label: String, val epgChannelId: String, val from: Screen) : Screen
 }
 
 @Composable
@@ -50,7 +50,12 @@ fun App() {
             onPlay = { url ->
                 directUrl = url
                 creds.lastDirectUrl = url
-                current = Screen.Player(url, label = url.substringAfterLast('/').take(40), from = Screen.StreamTester)
+                current = Screen.Player(
+                    url = url,
+                    label = url.substringAfterLast('/').take(40),
+                    epgChannelId = "",
+                    from = Screen.StreamTester,
+                )
             },
             onUrlChange = {
                 directUrl = it
@@ -67,9 +72,9 @@ fun App() {
             host = host,
             user = user,
             pass = pass,
-            onChannelClick = { url, label ->
+            onChannelClick = { url, label, epgId ->
                 creds.lastChannelUrl = url
-                current = Screen.Player(url, label, from = Screen.LiveTv)
+                current = Screen.Player(url = url, label = label, epgChannelId = epgId, from = Screen.LiveTv)
             },
             onExit = { current = Screen.Hub },
             onOpenSettings = { current = Screen.StreamTester },
@@ -78,6 +83,7 @@ fun App() {
         is Screen.Player -> PlayerScreen(
             streamUrl = screen.url,
             channelLabel = screen.label,
+            epgChannelId = screen.epgChannelId,
             onExit = { current = screen.from },
         )
     }

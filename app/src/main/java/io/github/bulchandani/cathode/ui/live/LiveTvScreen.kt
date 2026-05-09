@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import io.github.bulchandani.cathode.data.epg.EpgRepo
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
 import io.github.bulchandani.cathode.data.xtream.XtreamLiveStream
@@ -52,7 +53,7 @@ fun LiveTvScreen(
     host: String,
     user: String,
     pass: String,
-    onChannelClick: (streamUrl: String, channelLabel: String) -> Unit,
+    onChannelClick: (streamUrl: String, channelLabel: String, epgChannelId: String) -> Unit,
     onExit: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -61,6 +62,8 @@ fun LiveTvScreen(
     var selectedCategoryId by remember { mutableStateOf(ALL_CATEGORY_ID) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    var epgReady by remember { mutableStateOf(false) }
 
     LaunchedEffect(host, user, pass) {
         if (host.isBlank() || user.isBlank() || pass.isBlank()) {
@@ -78,6 +81,9 @@ fun LiveTvScreen(
             error = t.message ?: "Failed to load"
             loading = false
         }
+        // Best-effort EPG load — never blocks channel rendering.
+        EpgRepo.load(host, user, pass)
+        epgReady = EpgRepo.isReady()
     }
 
     BackHandler(onBack = onExit)
@@ -221,7 +227,7 @@ private fun ChannelColumn(
     host: String,
     user: String,
     pass: String,
-    onChannelClick: (streamUrl: String, channelLabel: String) -> Unit,
+    onChannelClick: (streamUrl: String, channelLabel: String, epgChannelId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
@@ -241,7 +247,7 @@ private fun ChannelColumn(
                         onClick = {
                             val url = XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
                             val label = "%04d  %s".format(ch.streamId, ch.name.ifBlank { "Channel ${ch.streamId}" })
-                            onChannelClick(url, label)
+                            onChannelClick(url, label, ch.epgChannelId)
                         },
                     )
                 }
@@ -252,8 +258,11 @@ private fun ChannelColumn(
 
 @Composable
 private fun ChannelRow(channel: XtreamLiveStream, onClick: () -> Unit) {
+    val (now, _) = remember(channel.epgChannelId, EpgRepo.isReady()) {
+        EpgRepo.nowAndNext(channel.epgChannelId)
+    }
     CathodeBox(
-        modifier = Modifier.fillMaxWidth().height(56.dp),
+        modifier = Modifier.fillMaxWidth().height(64.dp),
         onClick = onClick,
     ) {
         Row(
@@ -284,12 +293,20 @@ private fun ChannelRow(channel: XtreamLiveStream, onClick: () -> Unit) {
                 color = Amber,
                 modifier = Modifier.width(64.dp),
             )
-            Text(
-                text = channel.name.ifBlank { "Channel ${channel.streamId}" },
-                style = CathodeText.Body,
-                color = OffWhite,
-                modifier = Modifier.weight(1f),
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = channel.name.ifBlank { "Channel ${channel.streamId}" },
+                    style = CathodeText.Body,
+                    color = OffWhite,
+                )
+                if (now != null) {
+                    Text(
+                        text = "Now: ${now.title}",
+                        style = CathodeText.Caption,
+                        color = PhosphorGreenDim,
+                    )
+                }
+            }
         }
     }
 }

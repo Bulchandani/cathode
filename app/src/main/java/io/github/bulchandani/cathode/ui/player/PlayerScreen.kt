@@ -37,6 +37,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
+import io.github.bulchandani.cathode.data.epg.EpgRepo
 import io.github.bulchandani.cathode.player.CathodePlayerFactory
 import io.github.bulchandani.cathode.ui.theme.AlarmRed
 import io.github.bulchandani.cathode.ui.theme.Amber
@@ -53,8 +54,20 @@ import java.util.Locale
 fun PlayerScreen(
     streamUrl: String,
     channelLabel: String = streamUrl.substringAfterLast('/').take(40),
+    epgChannelId: String = "",
     onExit: () -> Unit,
 ) {
+    val (nowProgramme, nextProgramme) = remember(epgChannelId, EpgRepo.isReady()) {
+        EpgRepo.nowAndNext(epgChannelId)
+    }
+    val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val nowText = nowProgramme?.let {
+        "${timeFmt.format(Date(it.startMillis))}–${timeFmt.format(Date(it.stopMillis))}  ${it.title}"
+    } ?: "—"
+    val nextText = nextProgramme?.let {
+        "${timeFmt.format(Date(it.startMillis))}  ${it.title}"
+    } ?: "—"
+
     val context = LocalContext.current
     val player = remember { CathodePlayerFactory.create(context) }
 
@@ -187,8 +200,8 @@ fun PlayerScreen(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
-                    LabeledStat("NOW", "—")
-                    LabeledStat("NEXT", "—")
+                    LabeledStat("NOW", nowText)
+                    LabeledStat("NEXT", nextText)
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(24.dp),

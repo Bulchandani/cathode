@@ -22,20 +22,18 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.ui.theme.ScanlineOverlay
 
-private data class HubTile(val title: String)
-
-private val tiles = listOf(
-    HubTile("Live TV"),
-    HubTile("Movies"),
-    HubTile("Series"),
-    HubTile("Search"),
-    HubTile("Favorites"),
-    HubTile("Recents"),
-    HubTile("Settings"),
-)
+enum class HubTileId(val title: String) {
+    LiveTV("Live TV"),
+    Movies("Movies"),
+    Series("Series"),
+    Search("Search"),
+    Favorites("Favorites"),
+    Recents("Recents"),
+    Settings("Settings"),
+}
 
 @Composable
-fun HubScreen() {
+fun HubScreen(onTileClick: (HubTileId) -> Unit = {}) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -52,8 +50,8 @@ fun HubScreen() {
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp),
             ) {
-                items(tiles) { tile ->
-                    HubCard(tile.title)
+                items(HubTileId.entries) { tile ->
+                    HubCard(tile.title, onClick = { onTileClick(tile) })
                 }
             }
         }
@@ -62,9 +60,9 @@ fun HubScreen() {
 }
 
 @Composable
-private fun HubCard(title: String) {
+private fun HubCard(title: String, onClick: () -> Unit) {
     Card(
-        onClick = { /* TODO: navigate */ },
+        onClick = onClick,
         colors = CardDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary,

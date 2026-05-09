@@ -109,7 +109,7 @@ class VisualSystemSnapshotTest {
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(PhosphorGreen)
-                                    .cathodeGlow(focused = true, shape = RoundedCornerShape(6.dp), blurDp = 18f)
+                                    .cathodeGlow(focused = true, shape = RoundedCornerShape(6.dp), blurDp = 18.dp)
                                     .padding(horizontal = 24.dp, vertical = 12.dp),
                                 contentAlignment = Alignment.Center,
                             ) {

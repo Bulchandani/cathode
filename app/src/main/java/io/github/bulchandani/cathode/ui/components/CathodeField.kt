@@ -57,7 +57,7 @@ fun CathodeField(
                 .height(56.dp)
                 .clip(FieldShape)
                 .background(DimGrey)
-                .cathodeGlow(focused = focused, shape = FieldShape, blurDp = 18f)
+                .cathodeGlow(focused = focused, shape = FieldShape, blurDp = 18.dp)
                 .onFocusChanged { focused = it.isFocused }
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.CenterStart,

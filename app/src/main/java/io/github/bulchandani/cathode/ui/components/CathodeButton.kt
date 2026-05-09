@@ -54,7 +54,7 @@ fun CathodeButton(
         modifier = modifier
             .clip(ButtonShape)
             .background(container)
-            .cathodeGlow(focused = focused && enabled, shape = ButtonShape, blurDp = 18f)
+            .cathodeGlow(focused = focused && enabled, shape = ButtonShape, blurDp = 18.dp)
             .onFocusChanged { focused = it.isFocused }
             .focusable(enabled = enabled)
             .clickable(enabled = enabled, onClick = onClick)

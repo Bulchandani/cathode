@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import io.github.bulchandani.cathode.BuildConfig
+import io.github.bulchandani.cathode.ui.theme.PhosphorGreenDim
 import io.github.bulchandani.cathode.ui.theme.ScanlineOverlay
 
 enum class HubTileId(val title: String) {
@@ -64,6 +66,14 @@ fun HubScreen(onTileClick: (HubTileId) -> Unit = {}) {
                 }
             }
         }
+        Text(
+            text = "v${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.bodyLarge,
+            color = PhosphorGreenDim,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(24.dp),
+        )
         ScanlineOverlay()
     }
 }

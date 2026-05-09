@@ -22,7 +22,11 @@ private sealed interface Screen {
 @Composable
 fun App() {
     var current by remember { mutableStateOf<Screen>(Screen.Hub) }
+
     var lastUrl by remember { mutableStateOf(TEST_HLS_URL) }
+    var xtreamHost by remember { mutableStateOf("") }
+    var xtreamUser by remember { mutableStateOf("") }
+    var xtreamPass by remember { mutableStateOf("") }
 
     when (val screen = current) {
         Screen.Hub -> HubScreen(
@@ -37,9 +41,18 @@ fun App() {
 
         Screen.StreamTester -> StreamTesterScreen(
             initialUrl = lastUrl,
+            initialHost = xtreamHost,
+            initialUser = xtreamUser,
+            initialPass = xtreamPass,
             onPlay = { url ->
                 lastUrl = url
                 current = Screen.Player(url, Screen.StreamTester)
+            },
+            onUrlChange = { lastUrl = it },
+            onCredsChange = { h, u, p ->
+                xtreamHost = h
+                xtreamUser = u
+                xtreamPass = p
             },
             onExit = { current = Screen.Hub },
         )

@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.bulchandani.cathode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 71
-        versionName = "0.7.1"
+        versionCode = 72
+        versionName = "0.7.2"
     }
 
     buildTypes {
@@ -68,6 +68,8 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui)
+    implementation(libs.media3.datasource.okhttp)
+    implementation(libs.okhttp)
 
     implementation(libs.coil.compose)
     implementation(libs.androidx.work.runtime.ktx)

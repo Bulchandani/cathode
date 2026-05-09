@@ -4,38 +4,40 @@ import android.content.Context
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 /**
- * ExoPlayer tuned for IPTV. Sets a permissive User-Agent that
- * Xtream Codes / typical IPTV providers don't block (the stock
- * ExoPlayer UA frequently returns HTTP 405 / 403 on locked-down
- * providers); HLS / DASH / TS extraction via the default media-
- * source factory; generous live buffer; audio-focus aware.
+ * ExoPlayer tuned for IPTV. Uses an OkHttp-backed data source (better
+ * redirect / cookie / HTTP-2 handling than HttpURLConnection, which
+ * is what some Xtream providers reject with 405). Sets a permissive
+ * User-Agent and forwards generous timeouts.
  */
 object CathodePlayerFactory {
 
-    /** UAs that work with the widest set of IPTV providers. */
     private const val USER_AGENT = "VLC/3.0.20 LibVLC/3.0.20"
+
+    private val sharedClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
 
     fun create(context: Context): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs = */ 15_000,
-                /* maxBufferMs = */ 60_000,
-                /* bufferForPlaybackMs = */ 2_500,
-                /* bufferForPlaybackAfterRebufferMs = */ 5_000,
-            )
+            .setBufferDurationsMs(15_000, 60_000, 2_500, 5_000)
             .build()
 
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+        val httpDataSourceFactory = OkHttpDataSource.Factory(sharedClient)
             .setUserAgent(USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
 
         val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
@@ -49,7 +51,7 @@ object CathodePlayerFactory {
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(audioAttrs, /* handleAudioFocus = */ true)
+            .setAudioAttributes(audioAttrs, true)
             .setHandleAudioBecomingNoisy(true)
             .build()
     }

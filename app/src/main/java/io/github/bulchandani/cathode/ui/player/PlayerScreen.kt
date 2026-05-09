@@ -68,8 +68,9 @@ fun PlayerScreen(
     val context = LocalContext.current
     val player = remember { CathodePlayerFactory.create(context) }
 
-    var currentUrl by remember(streamUrl) { mutableStateOf(streamUrl) }
-    var triedTsFallback by remember(streamUrl) { mutableStateOf(!streamUrl.endsWith(".m3u8", true)) }
+    val urlCandidates = remember(streamUrl) { buildUrlCandidates(streamUrl) }
+    var candidateIndex by remember(streamUrl) { mutableStateOf(0) }
+    val currentUrl = urlCandidates.getOrElse(candidateIndex) { streamUrl }
     var retryAttempt by remember(streamUrl) { mutableStateOf(0) }
     var status by remember { mutableStateOf("Connecting…") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -127,11 +128,12 @@ fun PlayerScreen(
                 }
             }
             private fun tryRecover(p: ExoPlayer) {
-                if (currentUrl.endsWith(".m3u8", ignoreCase = true) && !triedTsFallback) {
-                    triedTsFallback = true
-                    currentUrl = currentUrl.removeSuffix(".m3u8") + ".ts"
+                // First: cycle through URL variants (.m3u8 -> .ts -> noExt -> /hls/...).
+                if (candidateIndex < urlCandidates.size - 1) {
+                    candidateIndex += 1
                     return
                 }
+                // Then: backoff retries on the last variant.
                 if (retryAttempt >= MAX_AUTO_RETRIES) return
                 retryAttempt += 1
                 p.playWhenReady = false
@@ -246,7 +248,11 @@ fun PlayerScreen(
                     )
                     if (errorMessage != null) {
                         Text("URL: $currentUrl", style = CathodeText.Caption, color = OffWhite)
-                        Text("Auto-retry $retryAttempt/$MAX_AUTO_RETRIES", style = CathodeText.Caption, color = PhosphorGreenDim)
+                        Text(
+                            "Variant ${candidateIndex + 1}/${urlCandidates.size}  ·  Auto-retry $retryAttempt/$MAX_AUTO_RETRIES",
+                            style = CathodeText.Caption,
+                            color = PhosphorGreenDim,
+                        )
                     }
                 }
             }
@@ -370,6 +376,26 @@ private fun AudioSyncDialog(
             contentAlignment = Alignment.Center,
         ) { Text("APPLY", style = CathodeText.Section, color = Void) }
     }
+}
+
+/**
+ * Variants we'll try in order when a stream URL is rejected.
+ * Cathode covers the common Xtream provider URL shapes:
+ * /live/.../{id}.m3u8 (default), /live/.../{id}.ts, /live/.../{id}
+ * (no extension), and /hls/.../{id}.m3u8 (some panels).
+ */
+private fun buildUrlCandidates(streamUrl: String): List<String> {
+    val out = mutableListOf(streamUrl)
+    if (streamUrl.endsWith(".m3u8", ignoreCase = true)) {
+        out += streamUrl.removeSuffix(".m3u8") + ".ts"
+    }
+    val noExt = streamUrl.replace(Regex("""\.(m3u8|ts)$""", RegexOption.IGNORE_CASE), "")
+    if (noExt != streamUrl && noExt !in out) out += noExt
+    if (streamUrl.contains("/live/")) {
+        val hlsSwap = streamUrl.replace("/live/", "/hls/")
+        if (hlsSwap !in out) out += hlsSwap
+    }
+    return out.distinct()
 }
 
 @Composable

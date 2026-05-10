@@ -37,6 +37,7 @@ import io.github.bulchandani.cathode.data.catalog.FavoriteItem
 import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
 import io.github.bulchandani.cathode.ui.components.Toaster
 import io.github.bulchandani.cathode.data.epg.EpgRepo
+import io.github.bulchandani.cathode.data.m3u.M3uIndex
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamCategory
 import io.github.bulchandani.cathode.data.xtream.XtreamLiveStream
@@ -100,15 +101,18 @@ fun LiveTvScreen(
                 loading = false
             }
         }
-        // Best-effort EPG load — never blocks channel rendering.
+        // Best-effort EPG + M3U-index load — never blocks channel rendering.
         EpgRepo.load(host, user, pass)
         epgReady = EpgRepo.isReady()
+        M3uIndex.load(host, user, pass)
     }
 
     BackHandler(onBack = onExit)
 
-    val displayChannels = if (selectedCategoryId == ALL_CATEGORY_ID) allChannels
+    var sortByName by remember { mutableStateOf(false) }
+    val filtered = if (selectedCategoryId == ALL_CATEGORY_ID) allChannels
     else allChannels.filter { it.categoryId == selectedCategoryId }
+    val displayChannels = if (sortByName) filtered.sortedBy { it.name.lowercase() } else filtered
 
     val refreshScope = rememberCoroutineScope()
     Box(modifier = Modifier.fillMaxSize()) {
@@ -124,6 +128,11 @@ fun LiveTvScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+                io.github.bulchandani.cathode.ui.components.CathodeButton(
+                    text = if (sortByName) "SORT: NAME" else "SORT: #",
+                    onClick = { sortByName = !sortByName },
+                )
+                Spacer(Modifier.width(8.dp))
                 io.github.bulchandani.cathode.ui.components.CathodeButton(
                     text = if (epgReady) "REFRESH EPG" else "LOAD EPG",
                     onClick = {
@@ -278,7 +287,9 @@ private fun ChannelColumn(
                     ChannelRow(
                         channel = ch,
                         onClick = {
-                            val url = XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
+                            // Prefer the URL from the provider's M3U; fall back to construction.
+                            val url = M3uIndex.urlFor(ch.streamId)
+                                ?: XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
                             val label = "%04d  %s".format(ch.streamId, ch.name.ifBlank { "Channel ${ch.streamId}" })
                             onChannelClick(url, label, ch.epgChannelId)
                         },

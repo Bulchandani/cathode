@@ -70,9 +70,10 @@ object SourcesStore {
     fun setActive(id: String) {
         if (_activeId.value == id) return
         _activeId.value = id
-        // Switching providers means stale catalogs/EPG; invalidate caches.
+        // Switching providers means stale catalogs/EPG/M3U index; wipe caches.
         io.github.bulchandani.cathode.data.catalog.CatalogRepo.invalidate()
         io.github.bulchandani.cathode.data.epg.EpgRepo.invalidate()
+        io.github.bulchandani.cathode.data.m3u.M3uIndex.invalidate()
         save()
     }
 

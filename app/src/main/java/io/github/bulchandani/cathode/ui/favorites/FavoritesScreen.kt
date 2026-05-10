@@ -27,6 +27,7 @@ import io.github.bulchandani.cathode.data.catalog.CatalogRepo
 import io.github.bulchandani.cathode.data.catalog.ContentKind
 import io.github.bulchandani.cathode.data.catalog.FavoriteItem
 import io.github.bulchandani.cathode.data.catalog.FavoritesRepo
+import io.github.bulchandani.cathode.data.m3u.M3uIndex
 import io.github.bulchandani.cathode.ui.components.Toaster
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.data.xtream.XtreamSeries
@@ -76,7 +77,8 @@ fun FavoritesScreen(
                                     ContentKind.Live -> {
                                         val ch = CatalogRepo.live.firstOrNull { it.streamId == f.id }
                                         if (ch != null) {
-                                            val url = XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
+                                            val url = M3uIndex.urlFor(ch.streamId)
+                                                ?: XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
                                             val label = "%04d  %s".format(ch.streamId, ch.name)
                                             onPlayLive(url, label, ch.epgChannelId)
                                         }

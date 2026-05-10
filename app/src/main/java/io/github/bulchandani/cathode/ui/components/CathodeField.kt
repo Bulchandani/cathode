@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,9 +30,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.ui.theme.CathodeText
 import io.github.bulchandani.cathode.ui.theme.DimGrey
@@ -122,17 +126,19 @@ private fun FieldEditorDialog(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     val visual: VisualTransformation =
         if (password) PasswordVisualTransformation() else VisualTransformation.None
+    val keyboardOpts = KeyboardOptions(
+        keyboardType = if (password) KeyboardType.Password else KeyboardType.Text,
+    )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.85f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center,
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
         Column(
             modifier = Modifier
-                .clickable(enabled = false) {}
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.Black)
                 .widthIn(min = 480.dp)
@@ -157,6 +163,7 @@ private fun FieldEditorDialog(
                     onValueChange = { draft = it },
                     singleLine = true,
                     visualTransformation = visual,
+                    keyboardOptions = keyboardOpts,
                     cursorBrush = SolidColor(PhosphorGreen),
                     textStyle = CathodeText.Body.copy(color = OffWhite),
                     modifier = Modifier

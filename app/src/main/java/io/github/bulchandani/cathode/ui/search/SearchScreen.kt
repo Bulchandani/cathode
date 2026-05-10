@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.data.catalog.CatalogRepo
+import io.github.bulchandani.cathode.data.m3u.M3uIndex
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
 import io.github.bulchandani.cathode.ui.components.CathodeBox
 import io.github.bulchandani.cathode.ui.components.CathodeField
@@ -45,7 +46,10 @@ fun SearchScreen(
     onSeriesResultClick: (seriesId: Int, name: String) -> Unit,
     onExit: () -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
+    // Voice search: if MainActivity stashed a query for us, consume it once.
+    var query by remember {
+        mutableStateOf(io.github.bulchandani.cathode.MainActivity.consumeVoiceQuery() ?: "")
+    }
     val q = query.trim().lowercase()
 
     BackHandler(onBack = onExit)
@@ -82,7 +86,8 @@ fun SearchScreen(
                         primary = ch.name.ifBlank { "Channel ${ch.streamId}" },
                         secondary = "%04d".format(ch.streamId),
                         onClick = {
-                            val url = XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
+                            val url = M3uIndex.urlFor(ch.streamId)
+                                ?: XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
                             val label = "%04d  %s".format(ch.streamId, ch.name)
                             onLiveResultClick(url, label, ch.epgChannelId)
                         },

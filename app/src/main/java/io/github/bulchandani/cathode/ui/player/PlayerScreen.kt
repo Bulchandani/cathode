@@ -64,6 +64,7 @@ fun PlayerScreen(
     epgChannelId: String = "",
     onExit: () -> Unit,
     onLastChannel: (() -> Unit)? = null,
+    onJumpToChannelNumber: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val player = remember { CathodePlayerFactory.create(context) }
@@ -81,8 +82,14 @@ fun PlayerScreen(
 
     var sleepDialogOpen by remember { mutableStateOf(false) }
     var syncDialogOpen by remember { mutableStateOf(false) }
+    var numPadOpen by remember { mutableStateOf(false) }
     var sleepEndsAt by remember { mutableStateOf<Long?>(null) }
-    var audioSyncMs by remember { mutableStateOf(AudioSyncState.offsetMs) }
+    // Per-stream remembered offset; falls back to 0 for unseen streams.
+    var audioSyncMs by remember(streamUrl) {
+        val saved = io.github.bulchandani.cathode.data.store.SettingsStore.audioSyncFor(streamUrl)
+        AudioSyncState.offsetMs = saved
+        mutableStateOf(saved)
+    }
     var overlayVisible by remember { mutableStateOf(true) }
 
     val (nowProgramme, nextProgramme) = remember(epgChannelId, EpgRepo.isReady()) {
@@ -244,6 +251,19 @@ fun PlayerScreen(
                 OsdChip("SLEEP" + (sleepEndsAt?.let { " · ${(it - System.currentTimeMillis()) / 60_000}m" } ?: "")) { sleepDialogOpen = true }
                 if (onLastChannel != null) OsdChip("LAST CHANNEL") { onLastChannel() }
                 OsdChip("SYNC ${if (audioSyncMs >= 0) "+${audioSyncMs}" else audioSyncMs}ms") { syncDialogOpen = true }
+                OsdChip("COPY URL") {
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                    cm?.setPrimaryClip(android.content.ClipData.newPlainText("Cathode stream", currentUrl))
+                    Toaster.show("URL copied")
+                }
+                OsdChip("EXTERNAL PLAYER") {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                        .setDataAndType(android.net.Uri.parse(currentUrl), "video/*")
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    runCatching { context.startActivity(intent) }
+                        .onFailure { Toaster.show("No external player installed") }
+                }
+                if (onJumpToChannelNumber != null) OsdChip("CH #") { numPadOpen = true }
                 Spacer(Modifier.weight(1f))
                 LabeledStat("CODEC", videoFormat?.codecs ?: videoFormat?.sampleMimeType ?: "—")
                 LabeledStat("RES", if (videoSize == VideoSize.UNKNOWN) "—" else "${videoSize.width}×${videoSize.height}")
@@ -300,7 +320,8 @@ fun PlayerScreen(
                 AudioSyncState.offsetMs = newMs
             },
             onApply = {
-                Toaster.show("Audio sync ${if (audioSyncMs >= 0) "+" else ""}${audioSyncMs}ms — re-prep stream")
+                io.github.bulchandani.cathode.data.store.SettingsStore.setAudioSync(streamUrl, audioSyncMs)
+                Toaster.show("Audio sync ${if (audioSyncMs >= 0) "+" else ""}${audioSyncMs}ms — saved")
                 player.setMediaItem(MediaItem.fromUri(currentUrl))
                 player.prepare()
                 player.playWhenReady = true
@@ -308,6 +329,76 @@ fun PlayerScreen(
             },
             onDismiss = { syncDialogOpen = false },
         )
+    }
+
+    if (numPadOpen && onJumpToChannelNumber != null) {
+        ChannelNumberDialog(
+            onSubmit = { number ->
+                numPadOpen = false
+                onJumpToChannelNumber(number)
+            },
+            onDismiss = { numPadOpen = false },
+        )
+    }
+}
+
+@Composable
+private fun ChannelNumberDialog(onSubmit: (Int) -> Unit, onDismiss: () -> Unit) {
+    var typed by remember { mutableStateOf("") }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("JUMP TO CHANNEL", style = CathodeText.Section, color = PhosphorGreen)
+            Text(
+                if (typed.isEmpty()) "—" else typed,
+                style = CathodeText.Display,
+                color = Amber,
+            )
+            listOf(
+                listOf("1", "2", "3"),
+                listOf("4", "5", "6"),
+                listOf("7", "8", "9"),
+                listOf("DEL", "0", "GO"),
+            ).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { label ->
+                        Box(
+                            modifier = Modifier
+                                .size(width = 64.dp, height = 56.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(io.github.bulchandani.cathode.ui.theme.DimGrey)
+                                .clickable {
+                                    when (label) {
+                                        "DEL" -> if (typed.isNotEmpty()) typed = typed.dropLast(1)
+                                        "GO" -> typed.toIntOrNull()?.let(onSubmit)
+                                        else -> if (typed.length < 6) typed += label
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                label,
+                                style = CathodeText.Section,
+                                color = when (label) {
+                                    "DEL" -> Amber
+                                    "GO" -> PhosphorGreen
+                                    else -> OffWhite
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

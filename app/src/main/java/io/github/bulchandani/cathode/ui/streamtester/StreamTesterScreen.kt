@@ -1,6 +1,8 @@
 package io.github.bulchandani.cathode.ui.streamtester
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,21 +23,29 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.BuildConfig
+import io.github.bulchandani.cathode.data.epg.EpgRepo
+import io.github.bulchandani.cathode.data.m3u.M3uIndex
+import io.github.bulchandani.cathode.data.store.BufferProfile
+import io.github.bulchandani.cathode.data.store.CrtMode
+import io.github.bulchandani.cathode.data.store.SettingsStore
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
-import io.github.bulchandani.cathode.data.xtream.XtreamLiveStream
-import io.github.bulchandani.cathode.ui.components.CathodeBox
 import io.github.bulchandani.cathode.ui.components.CathodeButton
 import io.github.bulchandani.cathode.ui.components.CathodeField
+import io.github.bulchandani.cathode.ui.components.Toaster
 import io.github.bulchandani.cathode.ui.theme.AlarmRed
 import io.github.bulchandani.cathode.ui.theme.Amber
 import io.github.bulchandani.cathode.ui.theme.CathodeText
+import io.github.bulchandani.cathode.ui.theme.DimGrey
 import io.github.bulchandani.cathode.ui.theme.OffWhite
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreen
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreenDim
+import io.github.bulchandani.cathode.ui.theme.Void
 import io.github.bulchandani.cathode.update.UpdateChecker
 import kotlinx.coroutines.launch
 
@@ -47,6 +58,8 @@ fun StreamTesterScreen(
     onCredsChange: (host: String, user: String, pass: String) -> Unit,
     onSaveSource: (host: String, user: String, pass: String) -> Unit = { _, _, _ -> },
     onOpenUrlTester: () -> Unit = {},
+    onOpenSourceManager: () -> Unit = {},
+    onOpenPinSetup: () -> Unit = {},
     onExit: () -> Unit,
 ) {
     var host by remember { mutableStateOf(initialHost) }
@@ -54,12 +67,15 @@ fun StreamTesterScreen(
     var pass by remember { mutableStateOf(initialPass) }
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsError by remember { mutableStateOf(false) }
-    var channels by remember { mutableStateOf<List<XtreamLiveStream>>(emptyList()) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+
+    val crtMode by SettingsStore.crtMode
+    val bufferProfile by SettingsStore.bufferProfile
+    val hasPin by SettingsStore.hasPin
 
     BackHandler(onBack = onExit)
 
@@ -70,12 +86,18 @@ fun StreamTesterScreen(
         ) {
             Text("SETTINGS", style = CathodeText.Display, color = PhosphorGreen)
 
-            Text("XTREAM CODES", style = CathodeText.Section, color = PhosphorGreen)
+            // ---- ACCOUNT ----
+            Section("ACCOUNT")
+            Text(
+                "Use https:// in the host if your provider runs on a secure port.",
+                style = CathodeText.Caption,
+                color = PhosphorGreenDim,
+            )
             CathodeField(
                 label = "Host",
                 value = host,
                 onValueChange = { host = it; onCredsChange(it, user, pass) },
-                placeholder = "http://provider.example.com:8080",
+                placeholder = "https://provider.example.com:443",
             )
             CathodeField(
                 label = "Username",
@@ -90,17 +112,18 @@ fun StreamTesterScreen(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 CathodeButton(
-                    text = "FETCH CHANNELS",
+                    text = "SIGN IN",
                     onClick = {
                         scope.launch {
-                            status = "Fetching channels…"
+                            status = "Signing in…"
                             statusIsError = false
-                            channels = emptyList()
                             try {
                                 val list = XtreamApi.fetchLiveStreams(host, user, pass)
-                                channels = list
                                 onSaveSource(host, user, pass)
-                                status = "Found ${list.size} channels — saved as source"
+                                // Kick off M3U + EPG in the background
+                                scope.launch { M3uIndex.load(host, user, pass, force = true) }
+                                scope.launch { EpgRepo.load(host, user, pass, force = true) }
+                                status = "OK · ${list.size} live channels available"
                                 statusIsError = false
                             } catch (t: Throwable) {
                                 status = "Error: ${t.message ?: t::class.simpleName}"
@@ -110,53 +133,78 @@ fun StreamTesterScreen(
                     },
                     enabled = host.isNotBlank() && user.isNotBlank() && pass.isNotBlank(),
                 )
+                CathodeButton(text = "MANAGE SOURCES", onClick = onOpenSourceManager)
             }
             status?.let { s ->
                 Text(s, style = CathodeText.Data, color = if (statusIsError) AlarmRed else Amber)
             }
 
-            if (channels.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text("CHANNELS (${channels.size})", style = CathodeText.Section, color = PhosphorGreen)
-                channels.take(50).forEach { ch ->
-                    CathodeBox(
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        onClick = { onPlay(XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)) },
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text("%04d".format(ch.streamId), style = CathodeText.Data, color = Amber)
-                            Text(
-                                ch.name.ifBlank { "Channel ${ch.streamId}" },
-                                style = CathodeText.Body,
-                                color = OffWhite,
-                                maxLines = 1,
-                            )
-                        }
-                    }
+            // ---- DISPLAY ----
+            Spacer(Modifier.height(8.dp))
+            Section("DISPLAY")
+            Text("CRT mode", style = CathodeText.Caption, color = PhosphorGreenDim)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ChoiceChip("FULL VINTAGE", selected = crtMode == CrtMode.FullVintage) {
+                    SettingsStore.setCrtMode(CrtMode.FullVintage)
                 }
-                if (channels.size > 50) {
-                    Text(
-                        "(showing first 50 of ${channels.size} — open Live TV for the full list)",
-                        style = CathodeText.Caption,
-                        color = PhosphorGreenDim,
-                    )
+                ChoiceChip("MODERATE", selected = crtMode == CrtMode.Moderate) {
+                    SettingsStore.setCrtMode(CrtMode.Moderate)
+                }
+                ChoiceChip("MODERN DARK", selected = crtMode == CrtMode.ModernDark) {
+                    SettingsStore.setCrtMode(CrtMode.ModernDark)
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
-            Text("—  TOOLS  —", style = CathodeText.Section, color = PhosphorGreenDim)
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // ---- PLAYBACK ----
+            Spacer(Modifier.height(8.dp))
+            Section("PLAYBACK")
+            Text("Buffer profile", style = CathodeText.Caption, color = PhosphorGreenDim)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ChoiceChip("LOW LATENCY", selected = bufferProfile == BufferProfile.LowLatency) {
+                    SettingsStore.setBufferProfile(BufferProfile.LowLatency)
+                }
+                ChoiceChip("DEFAULT", selected = bufferProfile == BufferProfile.Default) {
+                    SettingsStore.setBufferProfile(BufferProfile.Default)
+                }
+                ChoiceChip("ROBUST", selected = bufferProfile == BufferProfile.Robust) {
+                    SettingsStore.setBufferProfile(BufferProfile.Robust)
+                }
+            }
+            Text(
+                "Default works for most cases. Low latency cuts buffer for live sports. Robust adds headroom for flaky networks.",
+                style = CathodeText.Caption,
+                color = PhosphorGreenDim,
+            )
+
+            // ---- PARENTAL ----
+            Spacer(Modifier.height(8.dp))
+            Section("PARENTAL")
+            Text(
+                if (hasPin) "PIN is SET — you'll be asked when entering Settings."
+                else "No PIN set — Settings is unlocked.",
+                style = CathodeText.Caption,
+                color = if (hasPin) Amber else PhosphorGreenDim,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CathodeButton(text = if (hasPin) "CHANGE PIN" else "SET PIN", onClick = onOpenPinSetup)
+                if (hasPin) CathodeButton(text = "CLEAR PIN", onClick = {
+                    SettingsStore.clearPin()
+                    Toaster.show("PIN removed")
+                })
+            }
+
+            // ---- TOOLS ----
+            Spacer(Modifier.height(8.dp))
+            Section("TOOLS")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CathodeButton(text = "TEST A DIRECT URL", onClick = onOpenUrlTester)
             }
 
-            Spacer(Modifier.height(24.dp))
-            Text("—  ABOUT  —", style = CathodeText.Section, color = PhosphorGreenDim)
+            // ---- ABOUT ----
+            Spacer(Modifier.height(8.dp))
+            Section("ABOUT")
             Text("Cathode v${BuildConfig.VERSION_NAME}", style = CathodeText.Body, color = OffWhite)
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CathodeButton(
                     text = "CHECK FOR UPDATES",
                     onClick = {
@@ -181,7 +229,30 @@ fun StreamTesterScreen(
                 )
             }
             updateStatus?.let { Text(it, style = CathodeText.Data, color = Amber) }
+
             Spacer(Modifier.height(48.dp))
         }
+    }
+}
+
+@Composable
+private fun Section(label: String) {
+    Text("—  $label  —", style = CathodeText.Section, color = PhosphorGreenDim)
+}
+
+@Composable
+private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (selected) PhosphorGreen else DimGrey)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        Text(
+            label,
+            style = CathodeText.Caption,
+            color = if (selected) Void else PhosphorGreen,
+        )
     }
 }

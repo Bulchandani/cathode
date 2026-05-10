@@ -8,6 +8,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import io.github.bulchandani.cathode.data.store.SettingsStore
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -32,8 +33,14 @@ object CathodePlayerFactory {
     }
 
     fun create(context: Context): ExoPlayer {
+        val profile = SettingsStore.bufferProfile.value
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 60_000, 2_500, 5_000)
+            .setBufferDurationsMs(
+                profile.minBufferMs,
+                profile.maxBufferMs,
+                profile.playbackBufferMs,
+                profile.rebufferMs,
+            )
             .build()
 
         val httpDataSourceFactory = OkHttpDataSource.Factory(sharedClient)

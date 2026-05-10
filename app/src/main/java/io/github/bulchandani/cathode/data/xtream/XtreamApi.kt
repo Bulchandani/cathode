@@ -56,11 +56,16 @@ object XtreamApi {
 
     fun normalizeHost(input: String): String {
         val trimmed = input.trim().trimEnd('/')
-        return when {
-            trimmed.startsWith("http://", ignoreCase = true) -> trimmed
-            trimmed.startsWith("https://", ignoreCase = true) -> trimmed
-            else -> "http://$trimmed"
+        if (trimmed.startsWith("http://", ignoreCase = true)) return trimmed
+        if (trimmed.startsWith("https://", ignoreCase = true)) return trimmed
+        // No scheme — promote to https:// for explicit secure ports, else http.
+        val portMatch = Regex(":(\\d+)\\b").find(trimmed)
+        val port = portMatch?.groupValues?.get(1)?.toIntOrNull()
+        val scheme = when (port) {
+            443, 8443 -> "https://"
+            else -> "http://"
         }
+        return scheme + trimmed
     }
 
     suspend fun fetchLiveCategories(host: String, user: String, pass: String): List<XtreamCategory> =
@@ -101,6 +106,15 @@ object XtreamApi {
             val u = URLEncoder.encode(user, "UTF-8")
             val p = URLEncoder.encode(pass, "UTF-8")
             httpGet(URL("$cleanHost/xmltv.php?username=$u&password=$p"))
+        }
+
+    /** M3U-plus playlist with the *real* per-channel stream URLs. */
+    suspend fun fetchM3uPlus(host: String, user: String, pass: String): String =
+        withContext(Dispatchers.IO) {
+            val cleanHost = normalizeHost(host)
+            val u = URLEncoder.encode(user, "UTF-8")
+            val p = URLEncoder.encode(pass, "UTF-8")
+            httpGet(URL("$cleanHost/get.php?username=$u&password=$p&type=m3u_plus"))
         }
 
     fun buildLiveStreamUrl(host: String, user: String, pass: String, streamId: Int): String =

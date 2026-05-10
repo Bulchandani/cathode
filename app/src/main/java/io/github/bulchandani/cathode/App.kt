@@ -71,7 +71,6 @@ fun App() {
         EpgRepo.init(context)
         M3uIndex.init(context)
         EpgRefreshWorker.schedule(context)
-        if (MainActivity.pendingVoiceQuery != null) section = ShellSection.Search
     }
     val activeSource by SourcesStore.active
 
@@ -81,6 +80,11 @@ fun App() {
     var lastPlayer by remember { mutableStateOf<Overlay.Player?>(null) }
     var settingsUnlocked by remember { mutableStateOf(!SettingsStore.hasPin.value) }
     var setPinOpen by remember { mutableStateOf(false) }
+
+    // After section/state declarations, jump to Search if we received a voice query.
+    LaunchedEffect(Unit) {
+        if (MainActivity.pendingVoiceQuery != null) section = ShellSection.Search
+    }
 
     var directUrl by remember { mutableStateOf(creds.lastDirectUrl) }
     val host = activeSource?.host ?: ""

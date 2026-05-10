@@ -105,6 +105,12 @@ fun LiveTvScreen(
         EpgRepo.load(host, user, pass)
         epgReady = EpgRepo.isReady()
         M3uIndex.load(host, user, pass)
+        val m3uErr = M3uIndex.lastErrorMessage()
+        if (m3uErr != null && M3uIndex.size() == 0) {
+            io.github.bulchandani.cathode.ui.components.Toaster.show("M3U load failed: $m3uErr")
+        } else if (M3uIndex.size() == 0) {
+            io.github.bulchandani.cathode.ui.components.Toaster.show("M3U returned 0 channels — try https:// host")
+        }
     }
 
     BackHandler(onBack = onExit)
@@ -122,7 +128,7 @@ fun LiveTvScreen(
                 Spacer(Modifier.width(24.dp))
                 if (!loading && error == null) {
                     Text(
-                        text = "${displayChannels.size} ch",
+                        text = "${displayChannels.size} ch  ·  M3U: ${M3uIndex.size()}  ·  EPG: ${if (epgReady) "✓" else "—"}",
                         style = CathodeText.Section,
                         color = Amber,
                     )

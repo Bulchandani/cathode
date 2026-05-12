@@ -441,15 +441,16 @@ private fun ChannelNumberDialog(onSubmit: (Int) -> Unit, onDismiss: () -> Unit) 
 
 @Composable
 private fun OsdChip(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(DimGrey)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Text(label, style = CathodeText.Caption, color = PhosphorGreen)
-    }
+    // Use CathodeButton so the chip is D-pad-focusable on Fire TV with a
+    // visible highlight; bare `.clickable` boxes can be reached by tap but
+    // not by D-pad navigation (no focus indicator → not navigable).
+    io.github.bulchandani.cathode.ui.components.CathodeButton(
+        text = label,
+        onClick = onClick,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            horizontal = 12.dp, vertical = 8.dp,
+        ),
+    )
 }
 
 @Composable
@@ -465,16 +466,13 @@ private fun SleepTimerDialog(current: Long?, onPick: (minutes: Int) -> Unit, onD
     Dialog(onDismiss) {
         Text("SLEEP TIMER", style = CathodeText.Section, color = PhosphorGreen)
         Spacer(Modifier.padding(top = 12.dp))
-        listOf(0 to "Off", 15 to "15 min", 30 to "30 min", 60 to "60 min", 90 to "90 min").forEach { (m, l) ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(DimGrey)
-                    .clickable { onPick(m) }
-                    .padding(12.dp),
-            ) { Text(l, style = CathodeText.Body, color = OffWhite) }
-            Spacer(Modifier.padding(top = 4.dp))
+        listOf(0 to "OFF", 15 to "15 MIN", 30 to "30 MIN", 60 to "60 MIN", 90 to "90 MIN").forEach { (m, l) ->
+            io.github.bulchandani.cathode.ui.components.CathodeButton(
+                text = l,
+                onClick = { onPick(m) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.padding(top = 6.dp))
         }
     }
 }
@@ -488,42 +486,41 @@ private fun AudioSyncDialog(
 ) {
     Dialog(onDismiss) {
         Text("AUDIO SYNC", style = CathodeText.Section, color = PhosphorGreen)
-        Text("Range −2000ms to +2000ms in 50ms steps. Applied on next prepare.",
-            style = CathodeText.Caption, color = PhosphorGreenDim)
+        Text(
+            "Range −2000ms to +2000ms in 50ms steps. Applied on next prepare.",
+            style = CathodeText.Caption,
+            color = PhosphorGreenDim,
+        )
         Spacer(Modifier.padding(top = 12.dp))
         Text("${if (currentMs >= 0) "+" else ""}${currentMs}ms", style = CathodeText.Display, color = Amber)
         Spacer(Modifier.padding(top = 12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(-500, -50, 50, 500).forEach { step ->
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(DimGrey)
-                        .clickable {
-                            val next = (currentMs + step).coerceIn(-2000, 2000)
-                            onChange(next)
-                        }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                ) { Text("${if (step > 0) "+" else ""}${step}", style = CathodeText.Body, color = PhosphorGreen) }
+                io.github.bulchandani.cathode.ui.components.CathodeButton(
+                    text = "${if (step > 0) "+" else ""}$step",
+                    onClick = {
+                        val next = (currentMs + step).coerceIn(-2000, 2000)
+                        onChange(next)
+                    },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = 16.dp, vertical = 10.dp,
+                    ),
+                )
             }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(DimGrey)
-                    .clickable { onChange(0) }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-            ) { Text("0", style = CathodeText.Body, color = PhosphorGreenDim) }
+            io.github.bulchandani.cathode.ui.components.CathodeButton(
+                text = "0",
+                onClick = { onChange(0) },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = 16.dp, vertical = 10.dp,
+                ),
+            )
         }
         Spacer(Modifier.padding(top = 12.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(PhosphorGreen)
-                .clickable(onClick = onApply)
-                .padding(12.dp),
-            contentAlignment = Alignment.Center,
-        ) { Text("APPLY", style = CathodeText.Section, color = Void) }
+        io.github.bulchandani.cathode.ui.components.CathodeButton(
+            text = "APPLY",
+            onClick = onApply,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -549,8 +546,16 @@ private fun buildUrlCandidates(streamUrl: String): List<String> {
 
 @Composable
 private fun Dialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    // Dismiss is BACK only, not click-outside. Click-outside was implemented
+    // as `.clickable(onClick = onDismiss)` on the scrim Box, which made the
+    // scrim itself focusable. On Fire TV that meant D-pad SELECT landed on
+    // the scrim first (dismissing the dialog) before ever reaching the
+    // buttons inside — making sleep/sync controls unreachable.
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(onClick = onDismiss),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.92f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(

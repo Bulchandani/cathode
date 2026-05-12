@@ -57,6 +57,10 @@ class PermissiveVideoRenderer(
         mediaCodecSelector: MediaCodecSelector,
         format: Format,
     ): Int {
+        // Kept lean (back to the v0.8.7 shape) — supportsFormat is called many
+        // times per prepare from the Media3 internal thread, and the Logger
+        // calls + format-attribute reads added in v0.8.8 correlated with the
+        // playback regression on the user's tablet/Fire TV.
         val original = super.supportsFormat(mediaCodecSelector, format)
         val support = RendererCapabilities.getFormatSupport(original)
         if (support != C.FORMAT_EXCEEDS_CAPABILITIES) return original

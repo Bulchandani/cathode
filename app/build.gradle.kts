@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.bulchandani.cathode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 91
-        versionName = "0.8.11"
+        versionCode = 92
+        versionName = "0.8.12"
     }
 
     // Signing configs:

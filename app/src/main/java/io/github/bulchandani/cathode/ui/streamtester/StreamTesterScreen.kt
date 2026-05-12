@@ -2,7 +2,9 @@ package io.github.bulchandani.cathode.ui.streamtester
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -61,6 +64,8 @@ fun StreamTesterScreen(
     onOpenUrlTester: () -> Unit = {},
     onOpenSourceManager: () -> Unit = {},
     onOpenPinSetup: () -> Unit = {},
+    onOpenLogViewer: () -> Unit = {},
+    onOpenHttpProbe: () -> Unit = {},
     onExit: () -> Unit,
 ) {
     var host by remember { mutableStateOf(initialHost) }
@@ -121,8 +126,9 @@ fun StreamTesterScreen(
                             try {
                                 val list = XtreamApi.fetchLiveStreams(host, user, pass)
                                 onSaveSource(host, user, pass)
-                                // Kick off M3U + EPG in the background
-                                scope.launch { M3uIndex.load(host, user, pass, force = true) }
+                                // Kick off M3U + EPG in the background — M3U load
+                                // is now process-scoped (survives this screen).
+                                M3uIndex.trigger(host, user, pass, force = true)
                                 scope.launch { EpgRepo.load(host, user, pass, force = true) }
                                 status = "OK · ${list.size} live channels available"
                                 statusIsError = false
@@ -199,6 +205,8 @@ fun StreamTesterScreen(
             Section("TOOLS")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CathodeButton(text = "TEST A DIRECT URL", onClick = onOpenUrlTester)
+                CathodeButton(text = "HTTP PROBE", onClick = onOpenHttpProbe)
+                CathodeButton(text = "LOG VIEWER", onClick = onOpenLogViewer)
             }
 
             // ---- DEVICE DECODERS ----
@@ -262,17 +270,37 @@ private fun Section(label: String) {
 
 @Composable
 private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    // Three visual states: focused (D-pad), selected (already chosen), resting.
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
+    val bg = when {
+        selected -> PhosphorGreen
+        focused -> PhosphorGreen.copy(alpha = 0.25f)
+        else -> DimGrey
+    }
+    val labelColor = when {
+        selected -> Void
+        focused -> PhosphorGreen
+        else -> PhosphorGreen
+    }
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (selected) PhosphorGreen else DimGrey)
+            .clip(shape)
+            .background(bg)
+            .border(
+                width = if (focused && !selected) 2.dp else 0.dp,
+                color = if (focused && !selected) PhosphorGreen else Color.Transparent,
+                shape = shape,
+            )
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(
             label,
             style = CathodeText.Caption,
-            color = if (selected) Void else PhosphorGreen,
+            color = labelColor,
         )
     }
 }

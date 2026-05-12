@@ -1,7 +1,9 @@
 package io.github.bulchandani.cathode.ui.shell
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,9 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
@@ -89,13 +96,40 @@ private fun Sidebar(
 
 @Composable
 private fun SidebarItem(label: String, isActive: Boolean, onClick: () -> Unit) {
+    // Three visual states:
+    //  - focused (D-pad on this row): bright background + glow + active text
+    //  - active (currently-selected section): subtle background + dim glow
+    //  - resting: transparent, off-white text
+    // Previously these were collapsed into `isActive`, so D-pad nav was
+    // invisible on Fire TV. Now focused is reactive and separate from isActive.
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
+
+    val bg = when {
+        focused -> PhosphorGreen.copy(alpha = 0.16f)
+        isActive -> DimGrey
+        else -> Color.Transparent
+    }
+    val textColor = when {
+        focused -> PhosphorGreen
+        isActive -> PhosphorGreen
+        else -> OffWhite
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (isActive) DimGrey else Color.Transparent)
-            .cathodeGlow(focused = isActive, shape = RoundedCornerShape(6.dp), blurDp = 18.dp)
+            .clip(shape)
+            .background(bg)
+            .border(
+                width = if (focused) 2.dp else 0.dp,
+                color = if (focused) PhosphorGreen else Color.Transparent,
+                shape = shape,
+            )
+            .cathodeGlow(focused = focused || isActive, shape = shape, blurDp = 18.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.CenterStart,
@@ -103,7 +137,7 @@ private fun SidebarItem(label: String, isActive: Boolean, onClick: () -> Unit) {
         Text(
             text = label,
             style = CathodeText.Body,
-            color = if (isActive) PhosphorGreen else OffWhite,
+            color = textColor,
         )
     }
 }

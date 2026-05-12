@@ -25,6 +25,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Note: previously called WindowCompat.setDecorFitsSystemWindows(false)
+        // for IME inset handling, but it correlated with Media3 SurfaceView
+        // playback failures on Fire TV / Android tablet (v0.8.8 regression
+        // report). Default decor handling is reliable across our device matrix;
+        // adjustResize will still let imePadding() function in the editor.
         handleVoiceIntent(intent)
         setContent {
             CathodeTheme {

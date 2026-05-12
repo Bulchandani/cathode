@@ -1,6 +1,7 @@
 package io.github.bulchandani.cathode.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -43,7 +44,7 @@ fun CathodeButton(
         focused -> PhosphorGreen
         else -> Void
     }
-    val border = if (enabled) PhosphorGreen else PhosphorGreenDim
+    val borderColor = if (enabled) PhosphorGreen else PhosphorGreenDim
     val labelColor = when {
         !enabled -> OffWhite
         focused -> Void
@@ -54,6 +55,9 @@ fun CathodeButton(
         modifier = modifier
             .clip(ButtonShape)
             .background(container)
+            // Always show a visible border so the button is legible against
+            // any background. Thicker when focused for D-pad clarity.
+            .border(width = if (focused) 2.dp else 1.dp, color = borderColor, shape = ButtonShape)
             .cathodeGlow(focused = focused && enabled, shape = ButtonShape, blurDp = 18.dp)
             .onFocusChanged { focused = it.isFocused }
             .focusable(enabled = enabled)

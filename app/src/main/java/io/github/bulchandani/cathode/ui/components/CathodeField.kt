@@ -1,8 +1,6 @@
 package io.github.bulchandani.cathode.ui.components
 
-import android.content.res.Configuration
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,13 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,8 +32,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -52,6 +45,12 @@ import io.github.bulchandani.cathode.ui.theme.PhosphorGreenDim
 
 private val FieldShape = RoundedCornerShape(6.dp)
 
+/**
+ * Request payload describing which field is asking the global editor
+ * overlay to come up. The overlay (rendered at the App.kt level) reads
+ * a state of this type — when non-null, it draws full-screen on top of
+ * everything else.
+ */
 data class FieldEditorRequest(
     val label: String,
     val initial: String,
@@ -60,6 +59,15 @@ data class FieldEditorRequest(
     val onConfirm: (String) -> Unit,
 )
 
+/**
+ * Top-level mutable state for the active field editor request. Provided
+ * via [CompositionLocalProvider] in App.kt so any CathodeField nested
+ * anywhere in the composition tree can drive the overlay.
+ *
+ * We hold the state outside any individual screen so the editor can
+ * truly cover everything — no Dialog window-sizing or focus-stealing
+ * shenanigans.
+ */
 val LocalFieldEditor = compositionLocalOf<MutableState<FieldEditorRequest?>> {
     error("FieldEditor controller not provided — wrap App content in CompositionLocalProvider(LocalFieldEditor provides ...)")
 }
@@ -100,11 +108,6 @@ fun CathodeField(
                 .height(56.dp)
                 .clip(FieldShape)
                 .background(DimGrey)
-                .border(
-                    width = if (rowFocused) 2.dp else 0.dp,
-                    color = if (rowFocused) PhosphorGreen else Color.Transparent,
-                    shape = FieldShape,
-                )
                 .cathodeGlow(focused = rowFocused, shape = FieldShape, blurDp = 18.dp)
                 .onFocusChanged { rowFocused = it.isFocused }
                 .focusable()
@@ -131,19 +134,11 @@ fun CathodeField(
 }
 
 /**
- * Full-screen editor overlay. Layout adapts to device class:
- *
- * - **Touch device (phone/tablet)**: OK/Cancel below input (touch-natural).
- *   `imePadding()` shifts the whole card up when the IME shows so the
- *   OK button is never under the keyboard.
- * - **TV / leanback**: OK/Cancel ABOVE input. From the input's D-pad
- *   position, UP reaches the buttons; the IME's Done action also
- *   confirms via [KeyboardActions]. Either way the OK button is
- *   reachable without arbitrary downward navigation.
- *
- * Focus is requested onto the input on first frame so typing starts
- * immediately. The black scrim is `fillMaxSize` so the parent screen
- * is completely covered — fixes the "underlay box" complaint.
+ * Full-screen editor overlay. Rendered once at the top of the App
+ * composition; reads its request from [LocalFieldEditor]. Covers
+ * absolutely everything beneath with a near-opaque black scrim,
+ * centers the editor card, focuses the [BasicTextField] on first
+ * frame so the IME comes up exactly once.
  */
 @Composable
 fun FieldEditorOverlay() {
@@ -158,53 +153,28 @@ fun FieldEditorOverlay() {
         if (req.password) PasswordVisualTransformation() else VisualTransformation.None
     val keyboardOpts = KeyboardOptions(
         keyboardType = if (req.password) KeyboardType.Password else KeyboardType.Text,
-        imeAction = ImeAction.Done,
     )
-    val confirm = {
-        req.onConfirm(draft)
-        editor.value = null
-    }
-    val cancel = { editor.value = null }
-    val keyboardActions = KeyboardActions(onDone = { confirm() })
 
-    androidx.activity.compose.BackHandler { cancel() }
-
-    val config = LocalConfiguration.current
-    val isTv = (config.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
-        Configuration.UI_MODE_TYPE_TELEVISION
+    androidx.activity.compose.BackHandler { editor.value = null }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.97f))
-            .imePadding(),
-        contentAlignment = Alignment.TopCenter,
+            .background(Color.Black.copy(alpha = 0.97f)),
+        contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
-                .padding(top = 24.dp, bottom = 24.dp)
-                .widthIn(min = 320.dp, max = 900.dp)
+                .widthIn(min = 600.dp, max = 900.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(DimGrey)
-                .padding(24.dp)
-                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                .padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(req.label.uppercase(), style = CathodeText.Section, color = PhosphorGreen)
             if (req.placeholder.isNotEmpty()) {
                 Text(req.placeholder, style = CathodeText.Caption, color = PhosphorGreenDim)
             }
-
-            // On TV, place action buttons ABOVE the input so D-pad UP
-            // from the focused input reaches them. On touch, below
-            // (touch-natural; keyboard pushes the card via imePadding).
-            if (isTv) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CathodeButton(text = "OK", onClick = confirm)
-                    CathodeButton(text = "CANCEL", onClick = cancel)
-                }
-            }
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -220,7 +190,6 @@ fun FieldEditorOverlay() {
                     singleLine = true,
                     visualTransformation = visual,
                     keyboardOptions = keyboardOpts,
-                    keyboardActions = keyboardActions,
                     cursorBrush = SolidColor(PhosphorGreen),
                     textStyle = CathodeText.Body.copy(color = OffWhite),
                     modifier = Modifier
@@ -228,12 +197,12 @@ fun FieldEditorOverlay() {
                         .focusRequester(focusRequester),
                 )
             }
-
-            if (!isTv) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CathodeButton(text = "CANCEL", onClick = cancel)
-                    CathodeButton(text = "OK", onClick = confirm)
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CathodeButton(text = "CANCEL", onClick = { editor.value = null })
+                CathodeButton(text = "OK", onClick = {
+                    req.onConfirm(draft)
+                    editor.value = null
+                })
             }
         }
     }

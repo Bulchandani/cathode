@@ -46,8 +46,6 @@ private sealed interface Overlay {
     data class SeriesDetail(val series: XtreamSeries) : Overlay
     data object TestUrl : Overlay
     data object SourceManager : Overlay
-    data object LogViewer : Overlay
-    data object HttpProbe : Overlay
 }
 
 private val LIVE_ID_REGEX = Regex("/live/[^/]+/[^/]+/(\\d+)\\.[^.]+$")
@@ -164,20 +162,6 @@ fun App() {
                 )
             },
             onUrlChange = { directUrl = it; creds.lastDirectUrl = it },
-            onExit = { overlay = null },
-        )
-        Overlay.LogViewer -> io.github.bulchandani.cathode.ui.log.LogViewerScreen(
-            onExit = { overlay = null },
-        )
-        Overlay.HttpProbe -> io.github.bulchandani.cathode.ui.log.HttpProbeScreen(
-            initialUrl = run {
-                // Default-fill with the M3U URL we'd attempt — that's
-                // the URL the user most likely wants to probe.
-                if (host.isNotBlank() && user.isNotBlank() && pass.isNotBlank()) {
-                    val cleanHost = io.github.bulchandani.cathode.data.xtream.XtreamApi.normalizeHost(host)
-                    "$cleanHost/get.php?username=$user&password=$pass&type=m3u_plus"
-                } else ""
-            },
             onExit = { overlay = null },
         )
         null -> CathodeShell(
@@ -305,8 +289,6 @@ fun App() {
                             onOpenUrlTester = { overlay = Overlay.TestUrl },
                             onOpenSourceManager = { overlay = Overlay.SourceManager },
                             onOpenPinSetup = { setPinOpen = true },
-                            onOpenLogViewer = { overlay = Overlay.LogViewer },
-                            onOpenHttpProbe = { overlay = Overlay.HttpProbe },
                             onExit = exitApp,
                         )
                     }

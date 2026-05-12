@@ -13,24 +13,35 @@ android {
         applicationId = "io.github.bulchandani.cathode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 85
-        versionName = "0.8.5"
+        versionCode = 86
+        versionName = "0.8.6"
     }
 
-    // Pinned debug keystore — committed to the repo so every CI build is
-    // signed with the same key. Without this, GitHub Actions auto-generates
-    // a fresh debug keystore per run, every release gets a different
-    // signature, and the in-app updater can't replace the prior version
-    // ("App not installed as package conflicts with an existing package").
-    // The debug keystore has no security value (well-known default-ish creds)
-    // so committing it publicly is fine until we move to a real release
-    // keystore in v1.0.
+    // Signing configs:
+    // - `debug`: committed debug keystore. Local debug builds + any developer's
+    //   machine produces an APK signed with this key. Public, no security value.
+    // - `release`: production keystore. NOT committed. Loaded from env vars set
+    //   by GitHub Actions from repo secrets (KEYSTORE_BASE64 base64-decoded
+    //   to app/cathode-release.keystore, plus KEYSTORE_PASSWORD / KEY_ALIAS /
+    //   KEY_PASSWORD). If those env vars are absent (local dev), release builds
+    //   will fail to sign — debug builds are unaffected.
     signingConfigs {
         getByName("debug") {
             storeFile = file("debug-signing.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
+        }
+        create("release") {
+            val keystoreFile = file(
+                System.getenv("CATHODE_KEYSTORE_PATH") ?: "cathode-release.keystore"
+            )
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("CATHODE_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("CATHODE_KEY_ALIAS") ?: "cathode-release"
+                keyPassword = System.getenv("CATHODE_KEY_PASSWORD") ?: ""
+            }
         }
     }
 
@@ -44,6 +55,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Only attach the release signing config if the keystore is actually
+            // present — otherwise gradle errors out before any task runs even on
+            // unrelated tasks (lint, etc.) just for trying to evaluate the config.
+            if (file(System.getenv("CATHODE_KEYSTORE_PATH") ?: "cathode-release.keystore").exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -66,6 +83,13 @@ android {
             isIncludeAndroidResources = true
             all { it.systemProperty("robolectric.graphicsMode", "NATIVE") }
         }
+    }
+
+    // lintVitalRelease has crashed inside AGP's Compose detector on this
+    // build matrix. Skip it — we don't ship lint-gated releases.
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 

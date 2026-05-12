@@ -122,7 +122,30 @@ fun PlayerScreen(
                     httpCode?.let { "HTTP $it" },
                     error.message?.takeIf { it.isNotBlank() },
                 ).joinToString(" · ")
-                errorMessage = "$codeName · $detail"
+
+                // Decoder capability errors get a friendlier message — these
+                // are device-hardware limits, not anything Cathode can retry
+                // its way out of, and the raw Media3 message ("Decoder init
+                // failed for ... formatSupported=NO_EXCEEDS_CAPABILITIES")
+                // looks like a Cathode bug to a user but isn't.
+                val isCapabilityError =
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                    (error.message ?: "").contains("EXCEEDS_CAPABILITIES", ignoreCase = true)
+                errorMessage = if (isCapabilityError) {
+                    val fmt = videoFormat
+                    val fmtDesc = if (fmt != null) {
+                        val codec = fmt.sampleMimeType?.substringAfter('/')?.uppercase() ?: "?"
+                        val w = fmt.width.takeIf { it > 0 } ?: 0
+                        val h = fmt.height.takeIf { it > 0 } ?: 0
+                        val bits = if (fmt.colorInfo?.lumaBitdepth in listOf(10, 12)) " ${fmt.colorInfo?.lumaBitdepth}-bit" else ""
+                        val hdr = if (fmt.colorInfo != null) " HDR" else ""
+                        "$codec ${w}×${h}${bits}${hdr}"
+                    } else "this channel's format"
+                    "Channel exceeds device decoder capabilities ($fmtDesc). " +
+                        "Your hardware can't decode this — check Settings → Device decoders."
+                } else {
+                    "$codeName · $detail"
+                }
                 tryRecover(player)
             }
             override fun onVideoSizeChanged(size: VideoSize) { videoSize = size }

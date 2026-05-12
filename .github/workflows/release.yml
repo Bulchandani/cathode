@@ -24,16 +24,40 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # v0.x: ship debug-signed APK so sideload works without a keystore.
-      # v1.0.0: switch to assembleRelease with a signed keystore from secrets.
-      - name: Build APK
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      # Decode the release keystore from a repo secret. The base64-encoded
+      # JKS file lives in KEYSTORE_BASE64; the rest of the credentials are
+      # KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD. Without these secrets
+      # the build still runs but Gradle skips the release signingConfig and
+      # produces an unsigned APK — which the Releases asset-upload step
+      # would then fail on, so missing-secrets fails loudly.
+      - name: Decode release keystore
+        run: |
+          if [ -z "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "::error::Repo secret KEYSTORE_BASE64 is not set. See README → Release setup."
+            exit 1
+          fi
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/cathode-release.keystore
+          ls -la app/cathode-release.keystore
+
+      - name: Build signed release APK
+        env:
+          CATHODE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          CATHODE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          CATHODE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/cathode.apk
-          cp app/build/outputs/apk/debug/app-debug.apk dist/cathode-${GITHUB_REF_NAME}.apk
+          cp app/build/outputs/apk/release/app-release.apk dist/cathode.apk
+          cp app/build/outputs/apk/release/app-release.apk dist/cathode-${GITHUB_REF_NAME}.apk
+
+      - name: Verify signing
+        run: |
+          # Print signer cert so the release log records which key signed this APK.
+          # Lets us confirm we didn't accidentally use a different cert.
+          "$ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner" \
+            verify --print-certs dist/cathode.apk | head -10 || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

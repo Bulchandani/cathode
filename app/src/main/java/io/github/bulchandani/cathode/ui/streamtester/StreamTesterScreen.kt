@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.BuildConfig
+import io.github.bulchandani.cathode.data.device.DeviceCodecs
 import io.github.bulchandani.cathode.data.epg.EpgRepo
 import io.github.bulchandani.cathode.data.m3u.M3uIndex
 import io.github.bulchandani.cathode.data.store.BufferProfile
@@ -200,10 +201,29 @@ fun StreamTesterScreen(
                 CathodeButton(text = "TEST A DIRECT URL", onClick = onOpenUrlTester)
             }
 
+            // ---- DEVICE DECODERS ----
+            // Quick summary of what this device's video decoders advertise.
+            // The point: "format exceeds capabilities" errors stop being
+            // mysterious — you can see right here whether you have HEVC at
+            // all, whether it goes to 4K, and whether 10-bit is on the list.
+            Spacer(Modifier.height(8.dp))
+            Section("DEVICE DECODERS")
+            val codecSummary = remember { runCatching { DeviceCodecs.summary() }.getOrNull() }
+            Text(
+                text = codecSummary ?: "(codec query unavailable on this device)",
+                style = CathodeText.Body,
+                color = OffWhite,
+            )
+
             // ---- ABOUT ----
             Spacer(Modifier.height(8.dp))
             Section("ABOUT")
             Text("Cathode v${BuildConfig.VERSION_NAME}", style = CathodeText.Body, color = OffWhite)
+            Text(
+                "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})",
+                style = CathodeText.Caption,
+                color = PhosphorGreenDim,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CathodeButton(
                     text = "CHECK FOR UPDATES",

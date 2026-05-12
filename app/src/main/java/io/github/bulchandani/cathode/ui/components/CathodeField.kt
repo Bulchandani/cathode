@@ -1,9 +1,10 @@
+@file:OptIn(ExperimentalTvMaterial3Api::class)
+
 package io.github.bulchandani.cathode.ui.components
 
 import android.content.res.Configuration
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,11 +16,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -33,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
@@ -42,6 +43,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.ui.theme.CathodeText
 import io.github.bulchandani.cathode.ui.theme.DimGrey
@@ -64,9 +69,13 @@ val LocalFieldEditor = compositionLocalOf<MutableState<FieldEditorRequest?>> {
 }
 
 /**
- * D-pad-friendly text field. On D-pad focus the field highlights but
- * does NOT pop up the IME. Click (SELECT on a remote, tap on touch)
- * raises a top-level overlay editor that actually takes input.
+ * Click-to-edit text field. D-pad focus puts a highlight on the field row;
+ * SELECT raises a full-screen editor overlay (see [FieldEditorOverlay])
+ * that actually takes input. This split is essential on TV — bringing up
+ * the IME inline mid-screen creates layout chaos.
+ *
+ * The field-row is a tv-material3 Surface so D-pad navigation works
+ * correctly (no hand-rolled focusable/clickable stacking).
  */
 @Composable
 fun CathodeField(
@@ -77,7 +86,6 @@ fun CathodeField(
     placeholder: String = "",
     password: Boolean = false,
 ) {
-    var rowFocused by remember { mutableStateOf(false) }
     val editor = LocalFieldEditor.current
 
     val display = when {
@@ -90,60 +98,53 @@ fun CathodeField(
         Text(
             text = label.uppercase(),
             style = CathodeText.Caption,
-            color = if (rowFocused) PhosphorGreen else PhosphorGreenDim,
+            color = PhosphorGreenDim,
         )
         Spacer(Modifier.height(4.dp))
-        Box(
+        Surface(
+            onClick = {
+                editor.value = FieldEditorRequest(
+                    label = label,
+                    initial = value,
+                    placeholder = placeholder,
+                    password = password,
+                    onConfirm = onValueChange,
+                )
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .clip(FieldShape)
-                .background(DimGrey)
-                .border(
-                    width = if (rowFocused) 2.dp else 0.dp,
-                    color = if (rowFocused) PhosphorGreen else Color.Transparent,
-                    shape = FieldShape,
-                )
-                .cathodeGlow(focused = rowFocused, shape = FieldShape, blurDp = 18.dp)
-                .onFocusChanged { rowFocused = it.isFocused }
-                // No explicit .focusable() — clickable adds one. Two focus
-                // stops produces a 2-press SELECT on Fire TV.
-                .clickable {
-                    editor.value = FieldEditorRequest(
-                        label = label,
-                        initial = value,
-                        placeholder = placeholder,
-                        password = password,
-                        onConfirm = onValueChange,
-                    )
-                }
-                .padding(horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart,
+                .height(56.dp),
+            shape = ClickableSurfaceDefaults.shape(shape = FieldShape),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = DimGrey,
+                contentColor = if (value.isEmpty()) PhosphorGreenDim else OffWhite,
+                focusedContainerColor = DimGrey,
+                focusedContentColor = OffWhite,
+            ),
+            border = ClickableSurfaceDefaults.border(
+                border = Border(BorderStroke(1.dp, PhosphorGreenDim), shape = FieldShape),
+                focusedBorder = Border(BorderStroke(2.dp, PhosphorGreen), shape = FieldShape),
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
         ) {
-            Text(
-                text = display,
-                style = CathodeText.Body,
-                color = if (value.isEmpty()) PhosphorGreenDim else OffWhite,
-                maxLines = 1,
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(text = display, style = CathodeText.Body, maxLines = 1)
+            }
         }
     }
 }
 
 /**
- * Full-screen editor overlay. Layout adapts to device class:
- *
- * - **Touch device (phone/tablet)**: OK/Cancel below input (touch-natural).
- *   `imePadding()` shifts the whole card up when the IME shows so the
- *   OK button is never under the keyboard.
- * - **TV / leanback**: OK/Cancel ABOVE input. From the input's D-pad
- *   position, UP reaches the buttons; the IME's Done action also
- *   confirms via [KeyboardActions]. Either way the OK button is
- *   reachable without arbitrary downward navigation.
- *
- * Focus is requested onto the input on first frame so typing starts
- * immediately. The black scrim is `fillMaxSize` so the parent screen
- * is completely covered — fixes the "underlay box" complaint.
+ * Full-screen editor overlay. Rendered once at the top of the App
+ * composition; reads its request from [LocalFieldEditor]. Covers the
+ * parent screen entirely with a near-opaque scrim, focuses the
+ * BasicTextField on first frame so the IME pops once, places OK/Cancel
+ * above the input on TV and below on touch.
  */
 @Composable
 fun FieldEditorOverlay() {
@@ -187,7 +188,7 @@ fun FieldEditorOverlay() {
                 .clip(RoundedCornerShape(12.dp))
                 .background(DimGrey)
                 .padding(24.dp)
-                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(req.label.uppercase(), style = CathodeText.Section, color = PhosphorGreen)
@@ -195,9 +196,6 @@ fun FieldEditorOverlay() {
                 Text(req.placeholder, style = CathodeText.Caption, color = PhosphorGreenDim)
             }
 
-            // On TV, place action buttons ABOVE the input so D-pad UP
-            // from the focused input reaches them. On touch, below
-            // (touch-natural; keyboard pushes the card via imePadding).
             if (isTv) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CathodeButton(text = "OK", onClick = confirm)

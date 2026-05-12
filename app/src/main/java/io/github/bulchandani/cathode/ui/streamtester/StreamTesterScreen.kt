@@ -336,39 +336,36 @@ private fun Section(label: String) {
     Text("—  $label  —", style = CathodeText.Section, color = PhosphorGreenDim)
 }
 
+@OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    // Three visual states: focused (D-pad), selected (already chosen), resting.
-    var focused by remember { mutableStateOf(false) }
+    // Backed by tv-material3 Surface. Three visual states are expressed via
+    // the surface's color/border config — focused-vs-active is no longer
+    // hand-rolled.
     val shape = RoundedCornerShape(6.dp)
-    val bg = when {
-        selected -> PhosphorGreen
-        focused -> PhosphorGreen.copy(alpha = 0.25f)
-        else -> DimGrey
-    }
-    val labelColor = when {
-        selected -> Void
-        focused -> PhosphorGreen
-        else -> PhosphorGreen
-    }
-    Box(
-        modifier = Modifier
-            .clip(shape)
-            .background(bg)
-            .border(
-                width = if (focused && !selected) 2.dp else 0.dp,
-                color = if (focused && !selected) PhosphorGreen else Color.Transparent,
+    androidx.tv.material3.Surface(
+        onClick = onClick,
+        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = shape),
+        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+            containerColor = if (selected) PhosphorGreen else DimGrey,
+            contentColor = if (selected) Void else PhosphorGreen,
+            focusedContainerColor = if (selected) PhosphorGreen else PhosphorGreen.copy(alpha = 0.25f),
+            focusedContentColor = if (selected) Void else PhosphorGreen,
+        ),
+        border = androidx.tv.material3.ClickableSurfaceDefaults.border(
+            border = if (selected) androidx.tv.material3.Border(
+                border = androidx.compose.foundation.BorderStroke(1.dp, PhosphorGreen),
                 shape = shape,
-            )
-            .onFocusChanged { focused = it.isFocused }
-            // No explicit .focusable() — clickable provides one.
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) else androidx.tv.material3.Border.None,
+            focusedBorder = androidx.tv.material3.Border(
+                border = androidx.compose.foundation.BorderStroke(2.dp, PhosphorGreen),
+                shape = shape,
+            ),
+        ),
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
     ) {
-        Text(
-            label,
-            style = CathodeText.Caption,
-            color = labelColor,
-        )
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            androidx.tv.material3.Text(label, style = CathodeText.Caption)
+        }
     }
 }

@@ -1,33 +1,39 @@
+@file:OptIn(ExperimentalTvMaterial3Api::class)
+
 package io.github.bulchandani.cathode.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.ui.theme.CathodeText
+import io.github.bulchandani.cathode.ui.theme.DimGrey
 import io.github.bulchandani.cathode.ui.theme.OffWhite
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreen
-import io.github.bulchandani.cathode.ui.theme.PhosphorGreenDim
 import io.github.bulchandani.cathode.ui.theme.Void
 
-private val ButtonShape = RoundedCornerShape(6.dp)
-
+/**
+ * Phosphor-styled button built on `androidx.tv.material3.Surface` so D-pad
+ * focus, SELECT, and the focus highlight are all handled by the framework
+ * — no hand-rolled `.focusable() + .clickable() + .onFocusChanged` stack,
+ * which is what produced the 2-press SELECT bug we hit through v0.8.12.
+ *
+ * Visual model:
+ *   - resting: thin phosphor border, Void background, PhosphorGreen text
+ *   - focused: 2dp phosphor border, PhosphorGreen background, Void text
+ *   - disabled: DimGrey background, OffWhite text, dim border
+ */
 @Composable
 fun CathodeButton(
     text: String,
@@ -36,43 +42,47 @@ fun CathodeButton(
     enabled: Boolean = true,
     contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
 ) {
-    var focused by remember { mutableStateOf(false) }
-
-    val container: Color = when {
-        !enabled -> PhosphorGreenDim
-        focused -> PhosphorGreen
-        else -> Void
-    }
-    val borderColor = if (enabled) PhosphorGreen else PhosphorGreenDim
-    val labelColor = when {
-        !enabled -> OffWhite
-        focused -> Void
-        else -> PhosphorGreen
-    }
-
-    Box(
-        modifier = modifier
-            .clip(ButtonShape)
-            .background(container)
-            // Always show a visible border so the button is legible against
-            // any background. Thicker when focused for D-pad clarity.
-            .border(width = if (focused) 2.dp else 1.dp, color = borderColor, shape = ButtonShape)
-            .cathodeGlow(focused = focused && enabled, shape = ButtonShape, blurDp = 18.dp)
-            .onFocusChanged { focused = it.isFocused }
-            // No explicit .focusable() here — `clickable` already adds one.
-            // Stacking both creates two focus stops; on Fire TV the first
-            // SELECT lands on the outer (no action, drops highlight) and only
-            // the second SELECT reaches the clickable. That was the
-            // "everything takes 2 clicks" bug in v0.8.12.
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(contentPadding),
-        contentAlignment = Alignment.Center,
+    val shape = RoundedCornerShape(6.dp)
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        shape = ClickableSurfaceDefaults.shape(shape = shape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Void,
+            contentColor = PhosphorGreen,
+            focusedContainerColor = PhosphorGreen,
+            focusedContentColor = Void,
+            pressedContainerColor = PhosphorGreen,
+            pressedContentColor = Void,
+            disabledContainerColor = DimGrey,
+            disabledContentColor = OffWhite,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(1.dp, PhosphorGreen),
+                shape = shape,
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, PhosphorGreen),
+                shape = shape,
+            ),
+            disabledBorder = Border(
+                border = BorderStroke(1.dp, OffWhite),
+                shape = shape,
+            ),
+        ),
+        // No focus-scale animation — keeps the CRT aesthetic. tv-material3
+        // defaults to 1.1x focused scale; explicitly flatten to 1.0.
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
     ) {
-        Text(
-            text = text,
-            style = CathodeText.Section,
-            color = labelColor,
-            textAlign = TextAlign.Center,
-        )
+        Box(
+            modifier = Modifier.padding(contentPadding),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Text auto-picks up LocalContentColor from the Surface, so it
+            // flips Green→Void on focus without explicit color logic.
+            Text(text = text, style = CathodeText.Section, textAlign = TextAlign.Center)
+        }
     }
 }

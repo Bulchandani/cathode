@@ -1,31 +1,32 @@
+@file:OptIn(ExperimentalTvMaterial3Api::class)
+
 package io.github.bulchandani.cathode.ui.components
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface
 import io.github.bulchandani.cathode.ui.theme.DimGrey
+import io.github.bulchandani.cathode.ui.theme.PhosphorGreen
 
 private val DefaultShape = RoundedCornerShape(8.dp)
 
 /**
- * Base Cathode container. Tap fires `onClick`; long-press (hold OK on
- * a TV remote / long-press on touch) fires `onLongClick`. Pulsing
- * phosphor glow on D-pad / keyboard / hover focus.
+ * Generic container used by channel rows, category rows, episode rows, etc.
+ * Backed by `androidx.tv.material3.Surface` so D-pad focus + long-press +
+ * SELECT all work without us touching focusable/clickable directly.
+ *
+ * If neither onClick nor onLongClick are provided, falls back to a plain
+ * non-focusable Box (used for layout-only containers).
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CathodeBox(
     modifier: Modifier = Modifier,
@@ -34,25 +35,30 @@ fun CathodeBox(
     onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val baseModifier = modifier
-        .clip(shape)
-        .background(DimGrey)
-        .cathodeGlow(focused = focused, shape = shape)
-        .onFocusChanged { focused = it.isFocused }
-
-    val finalModifier = if (onClick != null || onLongClick != null) {
-        baseModifier
-            // No explicit .focusable() — combinedClickable adds one. Stacking
-            // both creates two focus stops on TV and produces a 2-press SELECT
-            // behaviour (first press drops the highlight without activating).
-            .combinedClickable(
-                onClick = { onClick?.invoke() },
-                onLongClick = onLongClick,
-            )
-    } else {
-        baseModifier
+    if (onClick == null && onLongClick == null) {
+        Box(modifier = modifier, content = content)
+        return
     }
-
-    Box(modifier = finalModifier, content = content)
+    Surface(
+        onClick = onClick ?: {},
+        onLongClick = onLongClick,
+        modifier = modifier,
+        shape = ClickableSurfaceDefaults.shape(shape = shape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = DimGrey,
+            contentColor = PhosphorGreen,
+            focusedContainerColor = DimGrey,
+            focusedContentColor = PhosphorGreen,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border.None,
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, PhosphorGreen),
+                shape = shape,
+            ),
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
+    ) {
+        content()
+    }
 }

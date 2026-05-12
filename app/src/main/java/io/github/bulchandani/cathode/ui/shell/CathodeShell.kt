@@ -1,12 +1,14 @@
+@file:OptIn(ExperimentalTvMaterial3Api::class)
+
 package io.github.bulchandani.cathode.ui.shell
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,22 +19,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import io.github.bulchandani.cathode.BuildConfig
 import io.github.bulchandani.cathode.ui.components.CathodeScanlines
 import io.github.bulchandani.cathode.ui.components.CathodeVignette
 import io.github.bulchandani.cathode.ui.components.ToasterHost
-import io.github.bulchandani.cathode.ui.components.cathodeGlow
 import io.github.bulchandani.cathode.ui.theme.CathodeText
 import io.github.bulchandani.cathode.ui.theme.DimGrey
 import io.github.bulchandani.cathode.ui.theme.OffWhite
@@ -80,7 +79,7 @@ private fun Sidebar(
     Column(modifier = modifier.background(Color.Black.copy(alpha = 0.3f)).padding(16.dp)) {
         Text("CATHODE", style = CathodeText.Headline, color = PhosphorGreen)
         Text("v${BuildConfig.VERSION_NAME}", style = CathodeText.Caption, color = PhosphorGreenDim)
-        Box(modifier = Modifier.height(24.dp))
+        Spacer(Modifier.height(24.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             items(ShellSection.entries) { section ->
                 SidebarItem(
@@ -95,49 +94,41 @@ private fun Sidebar(
 
 @Composable
 private fun SidebarItem(label: String, isActive: Boolean, onClick: () -> Unit) {
-    // Three visual states:
-    //  - focused (D-pad on this row): bright background + glow + active text
-    //  - active (currently-selected section): subtle background + dim glow
-    //  - resting: transparent, off-white text
-    // Previously these were collapsed into `isActive`, so D-pad nav was
-    // invisible on Fire TV. Now focused is reactive and separate from isActive.
-    var focused by remember { mutableStateOf(false) }
+    // tv-material3 Surface handles D-pad focus + SELECT correctly. We just
+    // express the three visual states (focused, active-but-not-focused,
+    // resting) via Surface's colors/border config.
     val shape = RoundedCornerShape(6.dp)
-
-    val bg = when {
-        focused -> PhosphorGreen.copy(alpha = 0.16f)
-        isActive -> DimGrey
-        else -> Color.Transparent
-    }
-    val textColor = when {
-        focused -> PhosphorGreen
-        isActive -> PhosphorGreen
-        else -> OffWhite
-    }
-
-    Box(
+    Surface(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .clip(shape)
-            .background(bg)
-            .border(
-                width = if (focused) 2.dp else 0.dp,
-                color = if (focused) PhosphorGreen else Color.Transparent,
+            .height(44.dp),
+        shape = ClickableSurfaceDefaults.shape(shape = shape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (isActive) DimGrey else Color.Transparent,
+            contentColor = if (isActive) PhosphorGreen else OffWhite,
+            focusedContainerColor = PhosphorGreen,
+            focusedContentColor = Void,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = if (isActive) Border(
+                border = BorderStroke(1.dp, PhosphorGreen),
                 shape = shape,
-            )
-            .cathodeGlow(focused = focused || isActive, shape = shape, blurDp = 18.dp)
-            .onFocusChanged { focused = it.isFocused }
-            // No explicit .focusable() — clickable adds one. Two focus stops
-            // produces a 2-press SELECT on Fire TV.
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.CenterStart,
+            ) else Border.None,
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, PhosphorGreen),
+                shape = shape,
+            ),
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
     ) {
-        Text(
-            text = label,
-            style = CathodeText.Body,
-            color = textColor,
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text(text = label, style = CathodeText.Body)
+        }
     }
 }

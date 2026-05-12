@@ -14,7 +14,6 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoRendererEventListener
-import io.github.bulchandani.cathode.log.Logger
 
 /**
  * A video renderer that bypasses Media3's strict pre-flight format
@@ -58,26 +57,16 @@ class PermissiveVideoRenderer(
         mediaCodecSelector: MediaCodecSelector,
         format: Format,
     ): Int {
+        // Kept lean (back to the v0.8.7 shape) — supportsFormat is called many
+        // times per prepare from the Media3 internal thread, and the Logger
+        // calls + format-attribute reads added in v0.8.8 correlated with the
+        // playback regression on the user's tablet/Fire TV.
         val original = super.supportsFormat(mediaCodecSelector, format)
         val support = RendererCapabilities.getFormatSupport(original)
-        val mime = format.sampleMimeType ?: "?"
-        val codecs = format.codecs ?: "?"
-        val w = format.width.takeIf { it > 0 } ?: 0
-        val h = format.height.takeIf { it > 0 } ?: 0
+        if (support != C.FORMAT_EXCEEDS_CAPABILITIES) return original
 
-        if (support != C.FORMAT_EXCEEDS_CAPABILITIES) {
-            Logger.d(
-                "Permissive",
-                "supportsFormat[$mime $codecs ${w}x$h] = ${supportName(support)} (passthrough)",
-            )
-            return original
-        }
+        val mime = format.sampleMimeType ?: return original
         if (!mime.startsWith("video/")) return original
-
-        Logger.i(
-            "Permissive",
-            "supportsFormat[$mime $codecs ${w}x$h] = EXCEEDS → HANDLED (upgrading; will let decoder.configure() try)",
-        )
 
         // Repack: HANDLED instead of EXCEEDS_CAPABILITIES; keep other flags as-is.
         return RendererCapabilities.create(
@@ -87,15 +76,6 @@ class PermissiveVideoRenderer(
             RendererCapabilities.getHardwareAccelerationSupport(original),
             RendererCapabilities.getDecoderSupport(original),
         )
-    }
-
-    private fun supportName(s: Int): String = when (s) {
-        C.FORMAT_HANDLED -> "HANDLED"
-        C.FORMAT_EXCEEDS_CAPABILITIES -> "EXCEEDS"
-        C.FORMAT_UNSUPPORTED_DRM -> "UNSUPPORTED_DRM"
-        C.FORMAT_UNSUPPORTED_SUBTYPE -> "UNSUPPORTED_SUBTYPE"
-        C.FORMAT_UNSUPPORTED_TYPE -> "UNSUPPORTED_TYPE"
-        else -> "?($s)"
     }
 }
 

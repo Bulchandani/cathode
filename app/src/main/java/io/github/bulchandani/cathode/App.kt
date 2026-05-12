@@ -1,6 +1,8 @@
 package io.github.bulchandani.cathode
 
 import android.app.Activity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -108,90 +110,13 @@ fun App() {
     androidx.compose.runtime.CompositionLocalProvider(
         io.github.bulchandani.cathode.ui.components.LocalFieldEditor provides fieldEditor,
     ) {
-    when (val o = overlay) {
-        is Overlay.Player -> PlayerScreen(
-            streamUrl = o.url,
-            channelLabel = o.label,
-            epgChannelId = o.epgChannelId,
-            onExit = { overlay = o.backTo },
-            onLastChannel = lastPlayer?.let { prev ->
-                {
-                    lastPlayer = o
-                    overlay = prev
-                }
-            },
-            onJumpToChannelNumber = { number ->
-                val ch = CatalogRepo.live.firstOrNull { it.streamId == number }
-                if (ch == null) {
-                    io.github.bulchandani.cathode.ui.components.Toaster.show("No channel #$number")
-                } else {
-                    val resolved = io.github.bulchandani.cathode.data.m3u.M3uIndex
-                        .resolveLiveUrl(ch.streamId, host, user, pass)
-                    if (resolved == null) {
-                        io.github.bulchandani.cathode.ui.components.Toaster.show(
-                            "M3U still loading — try again in a moment",
-                        )
-                    } else {
-                        if (resolved.source == "FALLBACK") {
-                            io.github.bulchandani.cathode.ui.components.Toaster.show(
-                                "Using constructed URL — channel not in M3U",
-                            )
-                        }
-                        val label = "%04d  %s  [%s]".format(ch.streamId, ch.name, resolved.source)
-                        openPlayer(
-                            Overlay.Player(resolved.url, label, ch.epgChannelId, backTo = o.backTo),
-                            recent = RecentItem(ContentKind.Live, ch.streamId, label, resolved.url, System.currentTimeMillis()),
-                        )
-                    }
-                }
-            },
-        )
-        is Overlay.SeriesDetail -> SeriesDetailScreen(
-            host = host, user = user, pass = pass,
-            series = o.series,
-            onEpisodeClick = { url, label ->
-                openPlayer(
-                    Overlay.Player(url, label, "", backTo = o),
-                    recent = RecentItem(
-                        ContentKind.Series, o.series.seriesId,
-                        "${o.series.name} · $label", url, System.currentTimeMillis(),
-                    ),
-                )
-            },
-            onExit = { overlay = null },
-        )
-        Overlay.SourceManager -> SourceManagerScreen(
-            onAddSource = { overlay = null; section = ShellSection.Settings },
-            onExit = { overlay = null },
-        )
-        Overlay.TestUrl -> TestUrlScreen(
-            initialUrl = directUrl,
-            onPlay = { url ->
-                directUrl = url
-                creds.lastDirectUrl = url
-                openPlayer(
-                    Overlay.Player(url, url.substringAfterLast('/').take(40), "", backTo = null),
-                    recent = null,
-                )
-            },
-            onUrlChange = { directUrl = it; creds.lastDirectUrl = it },
-            onExit = { overlay = null },
-        )
-        Overlay.LogViewer -> io.github.bulchandani.cathode.ui.log.LogViewerScreen(
-            onExit = { overlay = null },
-        )
-        Overlay.HttpProbe -> io.github.bulchandani.cathode.ui.log.HttpProbeScreen(
-            initialUrl = run {
-                // Default-fill with the M3U URL we'd attempt — that's
-                // the URL the user most likely wants to probe.
-                if (host.isNotBlank() && user.isNotBlank() && pass.isNotBlank()) {
-                    val cleanHost = io.github.bulchandani.cathode.data.xtream.XtreamApi.normalizeHost(host)
-                    "$cleanHost/get.php?username=$user&password=$pass&type=m3u_plus"
-                } else ""
-            },
-            onExit = { overlay = null },
-        )
-        null -> CathodeShell(
+    // The Shell + current section's screen stays composed at all times so
+    // its state (scroll position, selected category, etc.) is preserved
+    // across player open/close. Overlays paint *on top* of the Shell rather
+    // than replacing it — when the player exits, the Shell is already there
+    // with state intact, no recomposition from scratch.
+    Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
+        CathodeShell(
             active = section,
             onSelect = { section = it },
         ) {
@@ -323,6 +248,92 @@ fun App() {
                     }
                 }
             }
+        }
+
+        // Overlays paint on top of the Shell. When dismissed (overlay = null)
+        // the Shell behind is still composed with its state intact.
+        when (val o = overlay) {
+            is Overlay.Player -> PlayerScreen(
+                streamUrl = o.url,
+                channelLabel = o.label,
+                epgChannelId = o.epgChannelId,
+                onExit = { overlay = o.backTo },
+                onLastChannel = lastPlayer?.let { prev ->
+                    {
+                        lastPlayer = o
+                        overlay = prev
+                    }
+                },
+                onJumpToChannelNumber = { number ->
+                    val ch = CatalogRepo.live.firstOrNull { it.streamId == number }
+                    if (ch == null) {
+                        io.github.bulchandani.cathode.ui.components.Toaster.show("No channel #$number")
+                    } else {
+                        val resolved = io.github.bulchandani.cathode.data.m3u.M3uIndex
+                            .resolveLiveUrl(ch.streamId, host, user, pass)
+                        if (resolved == null) {
+                            io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                "M3U still loading — try again in a moment",
+                            )
+                        } else {
+                            if (resolved.source == "FALLBACK") {
+                                io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                    "Using constructed URL — channel not in M3U",
+                                )
+                            }
+                            val label = "%04d  %s  [%s]".format(ch.streamId, ch.name, resolved.source)
+                            openPlayer(
+                                Overlay.Player(resolved.url, label, ch.epgChannelId, backTo = o.backTo),
+                                recent = RecentItem(ContentKind.Live, ch.streamId, label, resolved.url, System.currentTimeMillis()),
+                            )
+                        }
+                    }
+                },
+            )
+            is Overlay.SeriesDetail -> SeriesDetailScreen(
+                host = host, user = user, pass = pass,
+                series = o.series,
+                onEpisodeClick = { url, label ->
+                    openPlayer(
+                        Overlay.Player(url, label, "", backTo = o),
+                        recent = RecentItem(
+                            ContentKind.Series, o.series.seriesId,
+                            "${o.series.name} · $label", url, System.currentTimeMillis(),
+                        ),
+                    )
+                },
+                onExit = { overlay = null },
+            )
+            Overlay.SourceManager -> SourceManagerScreen(
+                onAddSource = { overlay = null; section = ShellSection.Settings },
+                onExit = { overlay = null },
+            )
+            Overlay.TestUrl -> TestUrlScreen(
+                initialUrl = directUrl,
+                onPlay = { url ->
+                    directUrl = url
+                    creds.lastDirectUrl = url
+                    openPlayer(
+                        Overlay.Player(url, url.substringAfterLast('/').take(40), "", backTo = null),
+                        recent = null,
+                    )
+                },
+                onUrlChange = { directUrl = it; creds.lastDirectUrl = it },
+                onExit = { overlay = null },
+            )
+            Overlay.LogViewer -> io.github.bulchandani.cathode.ui.log.LogViewerScreen(
+                onExit = { overlay = null },
+            )
+            Overlay.HttpProbe -> io.github.bulchandani.cathode.ui.log.HttpProbeScreen(
+                initialUrl = run {
+                    if (host.isNotBlank() && user.isNotBlank() && pass.isNotBlank()) {
+                        val cleanHost = io.github.bulchandani.cathode.data.xtream.XtreamApi.normalizeHost(host)
+                        "$cleanHost/get.php?username=$user&password=$pass&type=m3u_plus"
+                    } else ""
+                },
+                onExit = { overlay = null },
+            )
+            null -> { /* no overlay — Shell shows through */ }
         }
     }
 

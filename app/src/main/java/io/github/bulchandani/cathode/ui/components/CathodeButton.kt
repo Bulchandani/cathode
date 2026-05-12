@@ -3,7 +3,6 @@ package io.github.bulchandani.cathode.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
@@ -60,7 +59,11 @@ fun CathodeButton(
             .border(width = if (focused) 2.dp else 1.dp, color = borderColor, shape = ButtonShape)
             .cathodeGlow(focused = focused && enabled, shape = ButtonShape, blurDp = 18.dp)
             .onFocusChanged { focused = it.isFocused }
-            .focusable(enabled = enabled)
+            // No explicit .focusable() here — `clickable` already adds one.
+            // Stacking both creates two focus stops; on Fire TV the first
+            // SELECT lands on the outer (no action, drops highlight) and only
+            // the second SELECT reaches the clickable. That was the
+            // "everything takes 2 clicks" bug in v0.8.12.
             .clickable(enabled = enabled, onClick = onClick)
             .padding(contentPadding),
         contentAlignment = Alignment.Center,

@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -81,7 +80,15 @@ fun StreamTesterScreen(
 
     val crtMode by SettingsStore.crtMode
     val bufferProfile by SettingsStore.bufferProfile
+    val channelSort by SettingsStore.channelSort
     val hasPin by SettingsStore.hasPin
+
+    // Observe M3uIndex state directly so the MAINTENANCE row's status text
+    // recomposes when the process-scope load completes.
+    val m3uSize by M3uIndex.sizeState
+    val m3uLoading by M3uIndex.loadingState
+    val m3uError by M3uIndex.errorState
+    var epgStatus by remember { mutableStateOf<String?>(null) }
 
     BackHandler(onBack = onExit)
 
@@ -161,6 +168,22 @@ fun StreamTesterScreen(
                     SettingsStore.setCrtMode(CrtMode.ModernDark)
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            Text("Channel sort (Live TV)", style = CathodeText.Caption, color = PhosphorGreenDim)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ChoiceChip(
+                    "BY NUMBER",
+                    selected = channelSort == io.github.bulchandani.cathode.data.store.ChannelSort.ByNumber,
+                ) {
+                    SettingsStore.setChannelSort(io.github.bulchandani.cathode.data.store.ChannelSort.ByNumber)
+                }
+                ChoiceChip(
+                    "BY NAME",
+                    selected = channelSort == io.github.bulchandani.cathode.data.store.ChannelSort.ByName,
+                ) {
+                    SettingsStore.setChannelSort(io.github.bulchandani.cathode.data.store.ChannelSort.ByName)
+                }
+            }
 
             // ---- PLAYBACK ----
             Spacer(Modifier.height(8.dp))
@@ -198,6 +221,51 @@ fun StreamTesterScreen(
                     SettingsStore.clearPin()
                     Toaster.show("PIN removed")
                 })
+            }
+
+            // ---- MAINTENANCE ----
+            // Catalog / EPG refreshes that used to live in the Live TV header.
+            // Putting them here keeps Live TV header pure-text so D-pad
+            // navigation can move straight from sidebar to content rows on
+            // Fire TV (header buttons were trapping focus).
+            Spacer(Modifier.height(8.dp))
+            Section("MAINTENANCE")
+            val m3uLabel = when {
+                m3uLoading -> "M3U: loading…"
+                m3uError != null && m3uSize == 0 -> "M3U: error — $m3uError"
+                m3uSize == 0 -> "M3U: not loaded"
+                else -> "M3U: $m3uSize channels indexed"
+            }
+            Text(m3uLabel, style = CathodeText.Caption, color = if (m3uSize > 0) Amber else PhosphorGreenDim)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CathodeButton(
+                    text = "RETRY M3U",
+                    enabled = host.isNotBlank() && user.isNotBlank() && pass.isNotBlank(),
+                    onClick = {
+                        M3uIndex.trigger(host, user, pass, force = true)
+                        Toaster.show("M3U refresh started…")
+                    },
+                )
+                CathodeButton(
+                    text = "REFRESH EPG",
+                    enabled = host.isNotBlank() && user.isNotBlank() && pass.isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            epgStatus = "Refreshing EPG…"
+                            try {
+                                EpgRepo.load(host, user, pass, force = true)
+                                val err = EpgRepo.lastErrorMessage()
+                                epgStatus = if (err != null) "EPG error: $err"
+                                else "EPG refreshed (${if (EpgRepo.isReady()) "ready" else "empty"})"
+                            } catch (t: Throwable) {
+                                epgStatus = "EPG error: ${t.message ?: t::class.simpleName}"
+                            }
+                        }
+                    },
+                )
+            }
+            epgStatus?.let {
+                Text(it, style = CathodeText.Caption, color = if (it.startsWith("EPG error")) AlarmRed else Amber)
             }
 
             // ---- TOOLS ----
@@ -293,7 +361,7 @@ private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
                 shape = shape,
             )
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
+            // No explicit .focusable() — clickable provides one.
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {

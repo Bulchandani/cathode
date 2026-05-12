@@ -3,7 +3,6 @@ package io.github.bulchandani.cathode.ui.shell
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -129,7 +128,8 @@ private fun SidebarItem(label: String, isActive: Boolean, onClick: () -> Unit) {
             )
             .cathodeGlow(focused = focused || isActive, shape = shape, blurDp = 18.dp)
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
+            // No explicit .focusable() — clickable adds one. Two focus stops
+            // produces a 2-press SELECT on Fire TV.
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.CenterStart,

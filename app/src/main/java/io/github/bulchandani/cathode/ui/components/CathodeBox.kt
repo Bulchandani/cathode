@@ -3,7 +3,6 @@ package io.github.bulchandani.cathode.ui.components
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,7 +43,9 @@ fun CathodeBox(
 
     val finalModifier = if (onClick != null || onLongClick != null) {
         baseModifier
-            .focusable()
+            // No explicit .focusable() — combinedClickable adds one. Stacking
+            // both creates two focus stops on TV and produces a 2-press SELECT
+            // behaviour (first press drops the highlight without activating).
             .combinedClickable(
                 onClick = { onClick?.invoke() },
                 onLongClick = onLongClick,

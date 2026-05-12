@@ -4,7 +4,6 @@ import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -107,7 +106,8 @@ fun CathodeField(
                 )
                 .cathodeGlow(focused = rowFocused, shape = FieldShape, blurDp = 18.dp)
                 .onFocusChanged { rowFocused = it.isFocused }
-                .focusable()
+                // No explicit .focusable() — clickable adds one. Two focus
+                // stops produces a 2-press SELECT on Fire TV.
                 .clickable {
                     editor.value = FieldEditorRequest(
                         label = label,

@@ -9,6 +9,8 @@ import java.security.MessageDigest
 
 enum class CrtMode { FullVintage, Moderate, ModernDark }
 
+enum class ChannelSort { ByNumber, ByName }
+
 enum class BufferProfile(
     val minBufferMs: Int,
     val maxBufferMs: Int,
@@ -28,6 +30,9 @@ object SettingsStore {
 
     private val _bufferProfile = mutableStateOf(BufferProfile.Default)
     val bufferProfile: State<BufferProfile> = _bufferProfile
+
+    private val _channelSort = mutableStateOf(ChannelSort.ByNumber)
+    val channelSort: State<ChannelSort> = _channelSort
 
     private val _hasPin = mutableStateOf(false)
     val hasPin: State<Boolean> = _hasPin
@@ -50,6 +55,10 @@ object SettingsStore {
         _bufferProfile.value = runCatching {
             BufferProfile.valueOf(p.getString(KEY_BUF, BufferProfile.Default.name)!!)
         }.getOrDefault(BufferProfile.Default)
+
+        _channelSort.value = runCatching {
+            ChannelSort.valueOf(p.getString(KEY_SORT, ChannelSort.ByNumber.name)!!)
+        }.getOrDefault(ChannelSort.ByNumber)
 
         _hasPin.value = p.contains(KEY_PIN_HASH)
 
@@ -74,6 +83,11 @@ object SettingsStore {
     fun setBufferProfile(p: BufferProfile) {
         _bufferProfile.value = p
         prefs?.edit { putString(KEY_BUF, p.name) }
+    }
+
+    fun setChannelSort(s: ChannelSort) {
+        _channelSort.value = s
+        prefs?.edit { putString(KEY_SORT, s.name) }
     }
 
     fun setPin(pin: String) {
@@ -109,6 +123,7 @@ object SettingsStore {
 
     private const val KEY_CRT = "crt_mode"
     private const val KEY_BUF = "buf_profile"
+    private const val KEY_SORT = "channel_sort"
     private const val KEY_PIN_HASH = "pin_hash"
     private const val KEY_SYNC_MAP = "audio_sync_map"
 }

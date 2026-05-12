@@ -22,7 +22,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +51,6 @@ import io.github.bulchandani.cathode.ui.theme.DimGrey
 import io.github.bulchandani.cathode.ui.theme.OffWhite
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreen
 import io.github.bulchandani.cathode.ui.theme.PhosphorGreenDim
-import kotlinx.coroutines.launch
 import io.github.bulchandani.cathode.ui.theme.Void
 
 private const val ALL_CATEGORY_ID = "__all__"
@@ -118,14 +116,22 @@ fun LiveTvScreen(
 
     BackHandler(onBack = onExit)
 
-    var sortByName by remember { mutableStateOf(false) }
+    // Channel sort is now a global Setting — Live TV just reads it.
+    val sortMode by io.github.bulchandani.cathode.data.store.SettingsStore.channelSort
     val filtered = if (selectedCategoryId == ALL_CATEGORY_ID) allChannels
     else allChannels.filter { it.categoryId == selectedCategoryId }
-    val displayChannels = if (sortByName) filtered.sortedBy { it.name.lowercase() } else filtered
+    val displayChannels = when (sortMode) {
+        io.github.bulchandani.cathode.data.store.ChannelSort.ByName ->
+            filtered.sortedBy { it.name.lowercase() }
+        io.github.bulchandani.cathode.data.store.ChannelSort.ByNumber ->
+            filtered
+    }
 
-    val refreshScope = rememberCoroutineScope()
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
+            // Pure text header — no focusable children, so D-pad navigation
+            // moves directly from the sidebar to the content rows below. Action
+            // buttons (RETRY M3U / REFRESH EPG / sort) live in Settings now.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("LIVE TV", style = CathodeText.Display, color = PhosphorGreen)
                 Spacer(Modifier.width(24.dp))
@@ -140,36 +146,6 @@ fun LiveTvScreen(
                         color = Amber,
                     )
                 }
-                Spacer(Modifier.weight(1f))
-                io.github.bulchandani.cathode.ui.components.CathodeButton(
-                    text = if (sortByName) "SORT: NAME" else "SORT: #",
-                    onClick = { sortByName = !sortByName },
-                )
-                Spacer(Modifier.width(8.dp))
-                io.github.bulchandani.cathode.ui.components.CathodeButton(
-                    text = "RETRY M3U",
-                    onClick = {
-                        // Fire-and-forget — load runs in process scope, state
-                        // updates flow back through M3uIndex.sizeState/errorState.
-                        M3uIndex.trigger(host, user, pass, force = true)
-                        io.github.bulchandani.cathode.ui.components.Toaster.show("M3U refresh started…")
-                    },
-                )
-                Spacer(Modifier.width(8.dp))
-                io.github.bulchandani.cathode.ui.components.CathodeButton(
-                    text = if (epgReady) "REFRESH EPG" else "LOAD EPG",
-                    onClick = {
-                        refreshScope.launch {
-                            io.github.bulchandani.cathode.ui.components.Toaster.show("Refreshing EPG…")
-                            EpgRepo.load(host, user, pass, force = true)
-                            epgReady = EpgRepo.isReady()
-                            val err = EpgRepo.lastErrorMessage()
-                            io.github.bulchandani.cathode.ui.components.Toaster.show(
-                                if (err != null) "EPG error: $err" else "EPG refreshed",
-                            )
-                        }
-                    },
-                )
             }
             // Persistent M3U diagnostic line — always shown when M3U: 0 so the
             // actual server error / OOM message doesn't get lost in a toast.

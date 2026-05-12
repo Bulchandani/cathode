@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Format
@@ -69,6 +70,17 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val player = remember { CathodePlayerFactory.create(context) }
+
+    // Keep the screen awake while PlayerScreen is mounted — Media3 PlayerView
+    // doesn't set the keepScreenOn flag itself, so on Fire TV the screensaver
+    // (Daydream) kicks in over the video. Setting it on the host ComposeView
+    // applies the flag activity-wide; restoring on dispose so navigating back
+    // to a menu lets the normal screensaver behavior resume.
+    val hostView = LocalView.current
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        hostView.keepScreenOn = true
+        onDispose { hostView.keepScreenOn = false }
+    }
 
     val urlCandidates = remember(streamUrl) { buildUrlCandidates(streamUrl) }
     var candidateIndex by remember(streamUrl) { mutableStateOf(0) }

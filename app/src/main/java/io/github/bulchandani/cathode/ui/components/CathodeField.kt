@@ -135,45 +135,63 @@ private fun FieldEditorDialog(
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
         ),
     ) {
-        Column(
+        // Outer scrim: fills the dialog window and paints near-opaque black
+        // so the parent screen (and the field box that was just clicked)
+        // are no longer visible behind the editor. Fixes the "two boxes
+        // underneath each other" report.
+        Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.Black)
-                .widthIn(min = 480.dp)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.96f))
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = { /* swallow taps on the scrim */ },
+                ),
+            contentAlignment = Alignment.Center,
         ) {
-            Text(label.uppercase(), style = CathodeText.Section, color = PhosphorGreen)
-            if (placeholder.isNotEmpty()) {
-                Text(placeholder, style = CathodeText.Caption, color = PhosphorGreenDim)
-            }
-            Box(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .clip(FieldShape)
+                    .widthIn(min = 600.dp, max = 900.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(DimGrey)
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.CenterStart,
+                    .padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                BasicTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    singleLine = true,
-                    visualTransformation = visual,
-                    keyboardOptions = keyboardOpts,
-                    cursorBrush = SolidColor(PhosphorGreen),
-                    textStyle = CathodeText.Body.copy(color = OffWhite),
+                Text(label.uppercase(), style = CathodeText.Section, color = PhosphorGreen)
+                if (placeholder.isNotEmpty()) {
+                    Text(placeholder, style = CathodeText.Caption, color = PhosphorGreenDim)
+                }
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(focusRequester),
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CathodeButton(text = "CANCEL", onClick = onDismiss)
-                CathodeButton(text = "OK", onClick = { onConfirm(draft) })
+                        .height(56.dp)
+                        .clip(FieldShape)
+                        .background(Color.Black)
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        singleLine = true,
+                        visualTransformation = visual,
+                        keyboardOptions = keyboardOpts,
+                        cursorBrush = SolidColor(PhosphorGreen),
+                        textStyle = CathodeText.Body.copy(color = OffWhite),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CathodeButton(text = "CANCEL", onClick = onDismiss)
+                    CathodeButton(text = "OK", onClick = { onConfirm(draft) })
+                }
             }
         }
     }

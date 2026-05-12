@@ -13,11 +13,31 @@ android {
         applicationId = "io.github.bulchandani.cathode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 82
-        versionName = "0.8.2"
+        versionCode = 83
+        versionName = "0.8.3"
+    }
+
+    // Pinned debug keystore — committed to the repo so every CI build is
+    // signed with the same key. Without this, GitHub Actions auto-generates
+    // a fresh debug keystore per run, every release gets a different
+    // signature, and the in-app updater can't replace the prior version
+    // ("App not installed as package conflicts with an existing package").
+    // The debug keystore has no security value (well-known default-ish creds)
+    // so committing it publicly is fine until we move to a real release
+    // keystore in v1.0.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug-signing.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

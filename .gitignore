@@ -28,6 +28,9 @@ captures/
 *.jks
 *.keystore
 keystore.properties
+# Exception: pinned debug keystore is committed on purpose so every CI build
+# is signed with the same key (otherwise in-app updates fail signature check).
+!app/debug-signing.keystore
 
 # Logs
 *.log

@@ -54,6 +54,14 @@ data class XtreamSeriesEpisode(
 
 object XtreamApi {
 
+    /**
+     * Matches TiviMate's FFmpeg-style UA. Several Xtream providers gate
+     * `/get.php` and the player_api endpoints behind a UA allowlist and
+     * 403/405 the default Java/HttpURLConnection signature.
+     */
+    private const val USER_AGENT = "Lavf/58.45.100"
+    private const val MAX_REDIRECTS = 5
+
     fun normalizeHost(input: String): String {
         val trimmed = input.trim().trimEnd('/')
         if (trimmed.startsWith("http://", ignoreCase = true)) return trimmed
@@ -66,6 +74,18 @@ object XtreamApi {
             else -> "http://"
         }
         return scheme + trimmed
+    }
+
+    /**
+     * Strip the default port from a URL so the Host header doesn't include
+     * an explicit `:443` (https) or `:80` (http) suffix. Some Xtream WAFs
+     * reject `Host: foo:443` because the cert is for `foo` and the routing
+     * rule expects the bare hostname.
+     */
+    fun stripDefaultPort(url: String): String {
+        return url
+            .replace(Regex("^(https://[^/:]+):443(?=[/?]|$)"), "$1")
+            .replace(Regex("^(http://[^/:]+):80(?=[/?]|$)"), "$1")
     }
 
     suspend fun fetchLiveCategories(host: String, user: String, pass: String): List<XtreamCategory> =
@@ -117,14 +137,19 @@ object XtreamApi {
             httpGet(URL("$cleanHost/get.php?username=$u&password=$p&type=m3u_plus"))
         }
 
+    // Live URL fallback uses .ts (MPEG-TS) rather than .m3u8 — TiviMate and
+    // most Xtream-native players use .ts and many providers 405 the .m3u8
+    // variant on live streams. This only fires when M3uIndex didn't return
+    // a URL for the channel; the M3U URL (already correct format) takes
+    // precedence everywhere it's available.
     fun buildLiveStreamUrl(host: String, user: String, pass: String, streamId: Int): String =
-        "${normalizeHost(host)}/live/$user/$pass/$streamId.m3u8"
+        stripDefaultPort("${normalizeHost(host)}/live/$user/$pass/$streamId.ts")
 
     fun buildVodUrl(host: String, user: String, pass: String, streamId: Int, ext: String): String =
-        "${normalizeHost(host)}/movie/$user/$pass/$streamId.${ext.ifBlank { "mp4" }}"
+        stripDefaultPort("${normalizeHost(host)}/movie/$user/$pass/$streamId.${ext.ifBlank { "mp4" }}")
 
     fun buildSeriesEpisodeUrl(host: String, user: String, pass: String, episodeId: String, ext: String): String =
-        "${normalizeHost(host)}/series/$user/$pass/$episodeId.${ext.ifBlank { "mp4" }}"
+        stripDefaultPort("${normalizeHost(host)}/series/$user/$pass/$episodeId.${ext.ifBlank { "mp4" }}")
 
     // ---------------- internal ----------------
 
@@ -257,18 +282,51 @@ object XtreamApi {
     }
 
     private fun httpGet(url: URL): String {
-        val conn = url.openConnection() as HttpURLConnection
-        try {
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 30_000
-            val code = conn.responseCode
-            if (code !in 200..299) throw IOException("HTTP $code from $url")
-            return (conn.inputStream ?: conn.errorStream)
-                ?.bufferedReader()?.use { it.readText() }
-                ?: throw IOException("Empty response from $url")
-        } finally {
-            conn.disconnect()
+        var current = url
+        var hops = 0
+        while (true) {
+            val conn = current.openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 30_000
+                conn.instanceFollowRedirects = false  // we handle redirects ourselves
+                conn.setRequestProperty("User-Agent", USER_AGENT)
+                conn.setRequestProperty("Accept", "*/*")
+                val code = conn.responseCode
+
+                // Manual redirect handling so http→https (and vice versa) works.
+                // HttpURLConnection refuses cross-protocol redirects silently.
+                if (code in 300..399) {
+                    val location = conn.getHeaderField("Location")
+                        ?: throw IOException("HTTP $code from $current with no Location header")
+                    if (++hops > MAX_REDIRECTS) {
+                        throw IOException("Too many redirects (>${MAX_REDIRECTS}) starting from $url")
+                    }
+                    current = URL(current, location)
+                    continue
+                }
+
+                if (code !in 200..299) {
+                    // Include up to 300 chars of the response body so providers'
+                    // error messages (often plain text or HTML) surface in
+                    // the UI instead of just "HTTP 405".
+                    val body = runCatching {
+                        (conn.errorStream ?: conn.inputStream)
+                            ?.bufferedReader()?.use { it.readText() }
+                            ?: ""
+                    }.getOrDefault("")
+                    val snippet = body.take(300).replace(Regex("\\s+"), " ").trim()
+                    val tail = if (snippet.isNotEmpty()) " — $snippet" else ""
+                    throw IOException("HTTP $code from $current$tail")
+                }
+
+                return (conn.inputStream ?: conn.errorStream)
+                    ?.bufferedReader()?.use { it.readText() }
+                    ?: throw IOException("Empty response from $current")
+            } finally {
+                conn.disconnect()
+            }
         }
     }
 }

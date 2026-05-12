@@ -140,6 +140,20 @@ fun LiveTvScreen(
                 )
                 Spacer(Modifier.width(8.dp))
                 io.github.bulchandani.cathode.ui.components.CathodeButton(
+                    text = "RETRY M3U",
+                    onClick = {
+                        refreshScope.launch {
+                            io.github.bulchandani.cathode.ui.components.Toaster.show("Refreshing M3U…")
+                            M3uIndex.load(host, user, pass, force = true)
+                            val err = M3uIndex.lastErrorMessage()
+                            io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                if (err != null) "M3U error" else "M3U: ${M3uIndex.size()}",
+                            )
+                        }
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                io.github.bulchandani.cathode.ui.components.CathodeButton(
                     text = if (epgReady) "REFRESH EPG" else "LOAD EPG",
                     onClick = {
                         refreshScope.launch {
@@ -152,6 +166,17 @@ fun LiveTvScreen(
                             )
                         }
                     },
+                )
+            }
+            // Persistent M3U diagnostic line — visible all the time when M3U: 0
+            // so the actual server error doesn't get lost in a transient toast.
+            val m3uErrPersistent = M3uIndex.lastErrorMessage()
+            if (M3uIndex.size() == 0 && m3uErrPersistent != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "M3U error: $m3uErrPersistent",
+                    style = CathodeText.Caption,
+                    color = io.github.bulchandani.cathode.ui.theme.AlarmRed,
                 )
             }
             Spacer(Modifier.height(16.dp))

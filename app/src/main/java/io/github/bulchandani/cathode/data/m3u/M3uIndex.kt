@@ -69,10 +69,14 @@ object M3uIndex {
                 idToUrl = channels.mapNotNull { ch ->
                     val match = streamIdRegex.find(ch.url) ?: return@mapNotNull null
                     val id = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
-                    id to ch.url
+                    // Strip default `:443` / `:80` so Host header stays bare —
+                    // some Xtream WAFs 405 explicit-port Host values.
+                    id to XtreamApi.stripDefaultPort(ch.url)
                 }.toMap()
                 lastFetch = System.currentTimeMillis()
-                lastError = null
+                lastError = if (idToUrl.isEmpty()) {
+                    "Playlist parsed 0 channels (response may not be M3U; first 200 chars: ${raw.take(200)})"
+                } else null
                 writeDiskCache()
             } catch (t: Throwable) {
                 lastError = t.message ?: t::class.simpleName

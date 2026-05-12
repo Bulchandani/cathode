@@ -1,46 +1,67 @@
 package io.github.bulchandani.cathode.data.m3u
 
 import android.content.Context
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import io.github.bulchandani.cathode.data.xtream.XtreamApi
+import io.github.bulchandani.cathode.log.Logger
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Maps an Xtream Codes `stream_id` to the **actual** stream URL the
- * provider exposes via `/get.php?...&type=m3u_plus`. Source of truth
- * for live URLs (we used to *construct* URLs by guessing scheme/port/
- * path/extension, which 405-ed on some providers).
+ * Maps Xtream Codes `stream_id` → actual stream URL pulled from the
+ * provider's `/get.php?type=m3u_plus` playlist.
  *
- * Memory-safe for huge playlists:
- * - Streams the HTTP body straight into [M3uParser.parseStreaming]
- *   (no big response String).
- * - Disk cache is line-based TSV (`id\turl\n`) — no JSONObject tree.
+ * Critically: the fetch + parse run on a **process-scoped** coroutine
+ * (`ioScope`), not a composition-scoped LaunchedEffect. Live TV's
+ * LaunchedEffect was being cancelled by recomposition before the
+ * (multi-minute, multi-MB) load could finish, producing the
+ * "coroutine scope left the composition" error and silent M3U: 0 state.
+ * Now the load survives any UI lifecycle event.
  *
- * Cache: in-memory + on-disk TSV, 6h TTL. Hydrate from disk on [init],
- * refresh by [load], wipe by [invalidate] on source switch.
+ * State is exposed as Compose [MutableState] so UI recomposes when
+ * load progresses/completes without needing its own coroutine.
  */
 object M3uIndex {
 
     private const val CACHE_TTL_MS = 6L * 60 * 60 * 1000
     private const val FILE_NAME = "m3u_index.tsv"
+    private const val TAG = "M3U"
     private val streamIdRegex = Regex("/(\\d+)\\.[^./?]+(?:\\?.*)?$")
 
+    /** Survives composition + Activity recreation. Backed by SupervisorJob so
+     * one failure doesn't kill the scope for other future loads. */
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Compose-observable load state. UI just reads these. */
+    val sizeState: MutableState<Int> = mutableStateOf(0)
+    val errorState: MutableState<String?> = mutableStateOf(null)
+    val loadingState: MutableState<Boolean> = mutableStateOf(false)
+    val lastFetchAtState: MutableState<Long> = mutableStateOf(0L)
+
     @Volatile private var idToUrl: Map<Int, String> = emptyMap()
-    @Volatile private var lastFetch: Long = 0L
-    @Volatile private var lastError: String? = null
     @Volatile private var appContext: Context? = null
+    @Volatile private var inflightJob: Job? = null
     private val refreshLock = Mutex()
 
     suspend fun init(context: Context) = withContext(Dispatchers.IO) {
         appContext = context.applicationContext
         if (idToUrl.isNotEmpty()) return@withContext
         val file = File(context.applicationContext.cacheDir, FILE_NAME)
-        if (!file.exists()) return@withContext
+        if (!file.exists()) {
+            Logger.d(TAG, "init: no disk cache")
+            return@withContext
+        }
         try {
-            val newMap = mutableMapOf<Int, String>()
+            val newMap = HashMap<Int, String>(8192)
             var ts = 0L
             file.bufferedReader().useLines { lines ->
                 for (line in lines) {
@@ -56,65 +77,109 @@ object M3uIndex {
             }
             if (System.currentTimeMillis() - ts < CACHE_TTL_MS) {
                 idToUrl = newMap
-                lastFetch = ts
+                sizeState.value = newMap.size
+                lastFetchAtState.value = ts
+                Logger.i(TAG, "init: hydrated ${newMap.size} channels from disk cache")
+            } else {
+                Logger.d(TAG, "init: disk cache stale (age=${System.currentTimeMillis() - ts}ms)")
             }
         } catch (t: Throwable) {
-            lastError = "Disk hydrate: ${t.message}"
+            Logger.e(TAG, "init: disk hydrate failed", t)
+            errorState.value = "Disk hydrate: ${t.message}"
         }
     }
 
-    suspend fun load(host: String, user: String, pass: String, force: Boolean = false) {
+    /**
+     * Trigger an M3U fetch. Returns immediately; the load runs on a
+     * process-scope coroutine and updates [sizeState] / [errorState] /
+     * [loadingState] as it progresses. Safe to call repeatedly — concurrent
+     * calls coalesce on [refreshLock].
+     */
+    fun trigger(host: String, user: String, pass: String, force: Boolean = false) {
+        if (host.isBlank() || user.isBlank() || pass.isBlank()) {
+            Logger.w(TAG, "trigger: blank credentials, skipping")
+            return
+        }
+        // If already loading, don't re-launch — the in-flight load will fulfill.
+        val current = inflightJob
+        if (current != null && current.isActive) {
+            Logger.d(TAG, "trigger: load already in flight, skipping")
+            return
+        }
+        inflightJob = ioScope.launch {
+            loadInternal(host, user, pass, force)
+        }
+    }
+
+    private suspend fun loadInternal(host: String, user: String, pass: String, force: Boolean) {
         if (!force && idToUrl.isNotEmpty() &&
-            System.currentTimeMillis() - lastFetch < CACHE_TTL_MS
-        ) return
+            System.currentTimeMillis() - lastFetchAtState.value < CACHE_TTL_MS
+        ) {
+            Logger.d(TAG, "load: cache fresh (size=${idToUrl.size}), skipping")
+            return
+        }
         refreshLock.withLock {
             if (!force && idToUrl.isNotEmpty() &&
-                System.currentTimeMillis() - lastFetch < CACHE_TTL_MS
+                System.currentTimeMillis() - lastFetchAtState.value < CACHE_TTL_MS
             ) return
+            loadingState.value = true
+            errorState.value = null
+            Logger.i(TAG, "load: starting fetch from $host (force=$force)")
+            val started = System.currentTimeMillis()
             try {
                 val newMap = HashMap<Int, String>(8192)
+                var lineCount = 0
                 XtreamApi.streamM3uPlus(host, user, pass) { stream ->
-                    // Block until parseStreaming finishes — we're already on an IO dispatcher
-                    // inside streamM3uPlus's withContext; parseStreaming switches to Default
-                    // internally for its line loop.
-                    kotlinx.coroutines.runBlocking {
+                    runBlocking {
                         M3uParser.parseStreaming(stream) { ch ->
+                            lineCount++
                             val match = streamIdRegex.find(ch.url) ?: return@parseStreaming
                             val id = match.groupValues[1].toIntOrNull() ?: return@parseStreaming
-                            // Strip default `:443` / `:80` so Host header stays bare —
-                            // some Xtream WAFs 405 explicit-port Host values.
                             newMap[id] = XtreamApi.stripDefaultPort(ch.url)
                         }
                     }
                 }
+                val elapsed = System.currentTimeMillis() - started
+                Logger.i(TAG, "load: parsed $lineCount EXTINF entries → ${newMap.size} indexed (${elapsed}ms)")
                 idToUrl = newMap
-                lastFetch = System.currentTimeMillis()
-                lastError = if (newMap.isEmpty()) {
-                    "Playlist parsed 0 channels — response may not be M3U format"
+                sizeState.value = newMap.size
+                lastFetchAtState.value = System.currentTimeMillis()
+                // Never null-out lastError when size==0 — caller relies on this.
+                errorState.value = if (newMap.isEmpty()) {
+                    "Playlist parsed $lineCount entries but indexed 0 — channel URLs may not match expected pattern (/<id>.<ext>)"
                 } else null
                 writeDiskCache()
             } catch (oom: OutOfMemoryError) {
-                // Playlist too big for heap. Don't crash the app — caller falls back to
-                // constructed URLs (which now use .ts and work on this provider).
+                Logger.e(TAG, "load: OOM during parse: ${oom.message}")
                 idToUrl = emptyMap()
-                lastError = "Out of memory: playlist too large (${oom.message ?: "no detail"}). " +
-                    "Using constructed URLs instead."
+                sizeState.value = 0
+                errorState.value = "Out of memory: playlist too large for device heap. " +
+                    "Using constructed URLs as fallback."
             } catch (t: Throwable) {
-                lastError = t.message ?: t::class.simpleName
+                Logger.e(TAG, "load: failed", t)
+                // Even on partial failure, set a non-null error so UI can show it.
+                val msg = t.message ?: t::class.simpleName ?: "Unknown error"
+                errorState.value = msg
+                // Don't clobber idToUrl on failure — keep whatever we had.
+            } finally {
+                loadingState.value = false
             }
         }
     }
 
     fun urlFor(streamId: Int): String? = idToUrl[streamId]
     fun isReady(): Boolean = idToUrl.isNotEmpty()
-    fun lastFetchAt(): Long = lastFetch
-    fun lastErrorMessage(): String? = lastError
-    fun size(): Int = idToUrl.size
+    fun size(): Int = sizeState.value
+    fun lastErrorMessage(): String? = errorState.value
+    fun isLoading(): Boolean = loadingState.value
+    fun lastFetchAt(): Long = lastFetchAtState.value
 
     fun invalidate() {
+        Logger.i(TAG, "invalidate")
         idToUrl = emptyMap()
-        lastFetch = 0L
-        lastError = null
+        sizeState.value = 0
+        lastFetchAtState.value = 0L
+        errorState.value = null
         appContext?.let {
             runCatching { File(it.cacheDir, FILE_NAME).delete() }
         }
@@ -123,9 +188,8 @@ object M3uIndex {
     private suspend fun writeDiskCache() = withContext(Dispatchers.IO) {
         val ctx = appContext ?: return@withContext
         try {
-            // Streamed TSV write — no big JSON tree, low peak memory.
             File(ctx.cacheDir, FILE_NAME).bufferedWriter().use { w ->
-                w.write("at=$lastFetch")
+                w.write("at=${lastFetchAtState.value}")
                 w.newLine()
                 idToUrl.forEach { (id, url) ->
                     w.write(id.toString())
@@ -134,6 +198,9 @@ object M3uIndex {
                     w.newLine()
                 }
             }
-        } catch (_: Throwable) { /* best-effort */ }
+            Logger.d(TAG, "writeDiskCache: ${idToUrl.size} entries written")
+        } catch (t: Throwable) {
+            Logger.w(TAG, "writeDiskCache failed: ${t.message}")
+        }
     }
 }

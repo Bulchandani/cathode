@@ -1,5 +1,6 @@
 package io.github.bulchandani.cathode.data.xtream
 
+import io.github.bulchandani.cathode.log.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -376,6 +377,7 @@ object XtreamApi {
         var current = url
         var hops = 0
         while (true) {
+            Logger.d(HTTP_TAG, "GET $current  (UA=$USER_AGENT, hop=$hops)")
             val conn = current.openConnection() as HttpURLConnection
             try {
                 conn.requestMethod = "GET"
@@ -385,6 +387,7 @@ object XtreamApi {
                 conn.setRequestProperty("User-Agent", USER_AGENT)
                 conn.setRequestProperty("Accept", "*/*")
                 val code = conn.responseCode
+                Logger.d(HTTP_TAG, "← $code ${conn.contentType ?: ""}")
 
                 if (code in 300..399) {
                     val location = conn.getHeaderField("Location")
@@ -392,6 +395,7 @@ object XtreamApi {
                     if (++hops > MAX_REDIRECTS) {
                         throw IOException("Too many redirects (>${MAX_REDIRECTS}) starting from $url")
                     }
+                    Logger.d(HTTP_TAG, "redirect → $location")
                     current = URL(current, location)
                     continue
                 }
@@ -403,18 +407,22 @@ object XtreamApi {
                             ?: ""
                     }.getOrDefault("")
                     val snippet = body.take(300).replace(Regex("\\s+"), " ").trim()
+                    Logger.w(HTTP_TAG, "HTTP $code body: ${snippet.ifEmpty { "(empty)" }}")
                     val tail = if (snippet.isNotEmpty()) " — $snippet" else ""
                     throw IOException("HTTP $code from $current$tail")
                 }
 
                 (conn.inputStream ?: throw IOException("Empty response from $current"))
                     .use(block)
+                Logger.d(HTTP_TAG, "stream complete")
                 return
             } finally {
                 conn.disconnect()
             }
         }
     }
+
+    private const val HTTP_TAG = "HTTP"
 
     private fun httpGet(url: URL): String {
         var current = url

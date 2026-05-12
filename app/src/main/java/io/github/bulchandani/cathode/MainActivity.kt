@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.view.WindowCompat
 import io.github.bulchandani.cathode.ui.theme.CathodeTheme
 
 class MainActivity : ComponentActivity() {
@@ -25,6 +26,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Edge-to-edge layout — required so IME insets reach Compose and the
+        // field editor can react to the soft keyboard with imePadding(). Without
+        // this, on tablet the IME slides over the OK button.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         handleVoiceIntent(intent)
         setContent {
             CathodeTheme {

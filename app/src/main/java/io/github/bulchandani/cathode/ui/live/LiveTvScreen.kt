@@ -73,12 +73,13 @@ fun LiveTvScreen(
     var error by remember { mutableStateOf<String?>(null) }
 
     var epgReady by remember { mutableStateOf(false) }
-    // M3U status mirrored into Compose State so the header counter and the
-    // red error line below it actually recompose when the load completes.
-    // Reading M3uIndex.size() / lastErrorMessage() inline doesn't trigger
-    // recomposition since they're not State.
-    var m3uSize by remember { mutableStateOf(M3uIndex.size()) }
-    var m3uError by remember { mutableStateOf(M3uIndex.lastErrorMessage()) }
+    // M3U state is owned by M3uIndex (process-scoped). Read directly via
+    // the exposed MutableState so Compose recomposes when the background
+    // load updates. No LaunchedEffect manages the M3U load anymore — its
+    // cancellation is what was producing "coroutine scope left composition".
+    val m3uSize by M3uIndex.sizeState
+    val m3uError by M3uIndex.errorState
+    val m3uLoading by M3uIndex.loadingState
 
     LaunchedEffect(host, user, pass) {
         if (host.isBlank() || user.isBlank() || pass.isBlank()) {
@@ -107,12 +108,12 @@ fun LiveTvScreen(
                 loading = false
             }
         }
-        // Best-effort EPG + M3U-index load — never blocks channel rendering.
+        // Best-effort EPG + M3U-index load. EPG still rides on this scope
+        // (it's small), but M3U has its own process-scoped coroutine that
+        // survives this LaunchedEffect getting cancelled.
         EpgRepo.load(host, user, pass)
         epgReady = EpgRepo.isReady()
-        M3uIndex.load(host, user, pass)
-        m3uSize = M3uIndex.size()
-        m3uError = M3uIndex.lastErrorMessage()
+        M3uIndex.trigger(host, user, pass)
     }
 
     BackHandler(onBack = onExit)
@@ -129,8 +130,12 @@ fun LiveTvScreen(
                 Text("LIVE TV", style = CathodeText.Display, color = PhosphorGreen)
                 Spacer(Modifier.width(24.dp))
                 if (!loading && error == null) {
+                    val m3uLabel = when {
+                        m3uLoading -> "loading…"
+                        else -> m3uSize.toString()
+                    }
                     Text(
-                        text = "${displayChannels.size} ch  ·  M3U: $m3uSize  ·  EPG: ${if (epgReady) "✓" else "—"}",
+                        text = "${displayChannels.size} ch  ·  M3U: $m3uLabel  ·  EPG: ${if (epgReady) "✓" else "—"}",
                         style = CathodeText.Section,
                         color = Amber,
                     )
@@ -144,15 +149,10 @@ fun LiveTvScreen(
                 io.github.bulchandani.cathode.ui.components.CathodeButton(
                     text = "RETRY M3U",
                     onClick = {
-                        refreshScope.launch {
-                            io.github.bulchandani.cathode.ui.components.Toaster.show("Refreshing M3U…")
-                            M3uIndex.load(host, user, pass, force = true)
-                            m3uSize = M3uIndex.size()
-                            m3uError = M3uIndex.lastErrorMessage()
-                            io.github.bulchandani.cathode.ui.components.Toaster.show(
-                                if (m3uError != null) "M3U error (see red line)" else "M3U: $m3uSize",
-                            )
-                        }
+                        // Fire-and-forget — load runs in process scope, state
+                        // updates flow back through M3uIndex.sizeState/errorState.
+                        M3uIndex.trigger(host, user, pass, force = true)
+                        io.github.bulchandani.cathode.ui.components.Toaster.show("M3U refresh started…")
                     },
                 )
                 Spacer(Modifier.width(8.dp))
@@ -173,13 +173,18 @@ fun LiveTvScreen(
             }
             // Persistent M3U diagnostic line — always shown when M3U: 0 so the
             // actual server error / OOM message doesn't get lost in a toast.
+            // While loading, show progress rather than an error.
             if (m3uSize == 0) {
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "M3U error: ${m3uError ?: "(no error reported — tap RETRY M3U to retry)"}",
-                    style = CathodeText.Caption,
-                    color = io.github.bulchandani.cathode.ui.theme.AlarmRed,
-                )
+                val (txt, col) = when {
+                    m3uLoading -> "M3U loading… (fetching playlist over network — large playlists take time)" to
+                        io.github.bulchandani.cathode.ui.theme.Amber
+                    m3uError != null -> "M3U error: $m3uError" to
+                        io.github.bulchandani.cathode.ui.theme.AlarmRed
+                    else -> "M3U not loaded yet — tap RETRY M3U" to
+                        io.github.bulchandani.cathode.ui.theme.Amber
+                }
+                Text(text = txt, style = CathodeText.Caption, color = col)
             }
             Spacer(Modifier.height(16.dp))
             when {

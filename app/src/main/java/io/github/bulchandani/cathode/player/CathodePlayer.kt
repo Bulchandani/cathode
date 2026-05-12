@@ -6,6 +6,7 @@ import androidx.media3.common.C
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import io.github.bulchandani.cathode.data.store.SettingsStore
@@ -49,12 +50,22 @@ object CathodePlayerFactory {
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
+        // If the primary (hardware) decoder rejects a format with
+        // ERROR_CODE_DECODER_INIT_FAILED / "exceeds capabilities", fall back
+        // to any other decoder Android exposes for the same MIME type — most
+        // commonly a software decoder. Won't make a 1080p Fire TV decode 4K
+        // HEVC (no decoder can), but it converts a fatal error into a soft
+        // failure on borderline formats.
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+
         val audioAttrs = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .setUsage(C.USAGE_MEDIA)
             .build()
 
         return ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttrs, true)

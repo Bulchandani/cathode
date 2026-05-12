@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.bulchandani.cathode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 84
-        versionName = "0.8.4"
+        versionCode = 85
+        versionName = "0.8.5"
     }
 
     // Pinned debug keystore — committed to the repo so every CI build is

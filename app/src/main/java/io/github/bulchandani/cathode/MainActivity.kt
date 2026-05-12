@@ -8,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.core.view.WindowCompat
 import io.github.bulchandani.cathode.ui.theme.CathodeTheme
 
 class MainActivity : ComponentActivity() {
@@ -26,10 +25,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Edge-to-edge layout — required so IME insets reach Compose and the
-        // field editor can react to the soft keyboard with imePadding(). Without
-        // this, on tablet the IME slides over the OK button.
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // Note: previously called WindowCompat.setDecorFitsSystemWindows(false)
+        // for IME inset handling, but it correlated with Media3 SurfaceView
+        // playback failures on Fire TV / Android tablet (v0.8.8 regression
+        // report). Default decor handling is reliable across our device matrix;
+        // adjustResize will still let imePadding() function in the editor.
         handleVoiceIntent(intent)
         setContent {
             CathodeTheme {

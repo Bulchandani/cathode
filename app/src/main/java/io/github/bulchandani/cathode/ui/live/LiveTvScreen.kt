@@ -301,11 +301,20 @@ private fun ChannelColumn(
                     ChannelRow(
                         channel = ch,
                         onClick = {
-                            // Prefer the URL from the provider's M3U; fall back to construction.
-                            val url = M3uIndex.urlFor(ch.streamId)
-                                ?: XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
-                            val label = "%04d  %s".format(ch.streamId, ch.name.ifBlank { "Channel ${ch.streamId}" })
-                            onChannelClick(url, label, ch.epgChannelId)
+                            val resolved = M3uIndex.resolveLiveUrl(ch.streamId, host, user, pass)
+                            if (resolved == null) {
+                                Toaster.show("M3U still loading — try again in a moment")
+                            } else {
+                                if (resolved.source == "FALLBACK") {
+                                    Toaster.show("Using constructed URL — channel not in M3U")
+                                }
+                                val label = "%04d  %s  [%s]".format(
+                                    ch.streamId,
+                                    ch.name.ifBlank { "Channel ${ch.streamId}" },
+                                    resolved.source,
+                                )
+                                onChannelClick(resolved.url, label, ch.epgChannelId)
+                            }
                         },
                         onLongClick = {
                             val pinned = FavoritesRepo.toggle(FavoriteItem(ContentKind.Live, ch.streamId, ch.name))

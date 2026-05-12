@@ -86,10 +86,20 @@ fun SearchScreen(
                         primary = ch.name.ifBlank { "Channel ${ch.streamId}" },
                         secondary = "%04d".format(ch.streamId),
                         onClick = {
-                            val url = M3uIndex.urlFor(ch.streamId)
-                                ?: XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
-                            val label = "%04d  %s".format(ch.streamId, ch.name)
-                            onLiveResultClick(url, label, ch.epgChannelId)
+                            val resolved = M3uIndex.resolveLiveUrl(ch.streamId, host, user, pass)
+                            if (resolved == null) {
+                                io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                    "M3U still loading — try again in a moment",
+                                )
+                            } else {
+                                if (resolved.source == "FALLBACK") {
+                                    io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                        "Using constructed URL — channel not in M3U",
+                                    )
+                                }
+                                val label = "%04d  %s  [%s]".format(ch.streamId, ch.name, resolved.source)
+                                onLiveResultClick(resolved.url, label, ch.epgChannelId)
+                            }
                         },
                     ) },
                     modifier = Modifier.weight(1f),

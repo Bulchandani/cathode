@@ -77,10 +77,20 @@ fun FavoritesScreen(
                                     ContentKind.Live -> {
                                         val ch = CatalogRepo.live.firstOrNull { it.streamId == f.id }
                                         if (ch != null) {
-                                            val url = M3uIndex.urlFor(ch.streamId)
-                                                ?: XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
-                                            val label = "%04d  %s".format(ch.streamId, ch.name)
-                                            onPlayLive(url, label, ch.epgChannelId)
+                                            val resolved = M3uIndex.resolveLiveUrl(ch.streamId, host, user, pass)
+                                            if (resolved == null) {
+                                                io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                                    "M3U still loading — try again in a moment",
+                                                )
+                                            } else {
+                                                if (resolved.source == "FALLBACK") {
+                                                    io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                                        "Using constructed URL — channel not in M3U",
+                                                    )
+                                                }
+                                                val label = "%04d  %s  [%s]".format(ch.streamId, ch.name, resolved.source)
+                                                onPlayLive(resolved.url, label, ch.epgChannelId)
+                                            }
                                         }
                                     }
                                     ContentKind.Movie -> {

@@ -33,7 +33,12 @@ import java.io.File
 object M3uIndex {
 
     private const val CACHE_TTL_MS = 6L * 60 * 60 * 1000
-    private const val FILE_NAME = "m3u_index.tsv"
+    // v2: bumped from m3u_index.tsv because pre-v0.8.12 caches had
+    // stripDefaultPort applied (port `:443` trimmed off https URLs). Reading
+    // those back gives the player port-less URLs that don't connect on some
+    // providers. v2 stores URLs verbatim from the M3U.
+    private const val FILE_NAME = "m3u_index_v2.tsv"
+    private const val LEGACY_FILE_NAME = "m3u_index.tsv"
     private const val TAG = "M3U"
     private val streamIdRegex = Regex("/(\\d+)\\.[^./?]+(?:\\?.*)?$")
 
@@ -54,6 +59,15 @@ object M3uIndex {
 
     suspend fun init(context: Context) = withContext(Dispatchers.IO) {
         appContext = context.applicationContext
+        // One-time cleanup of the v1 cache. Its URLs had ports stripped,
+        // which broke playback on providers that require explicit :443.
+        runCatching {
+            val legacy = File(context.applicationContext.cacheDir, LEGACY_FILE_NAME)
+            if (legacy.exists()) {
+                legacy.delete()
+                Logger.i(TAG, "init: deleted legacy v1 cache ($LEGACY_FILE_NAME) — port-stripped URLs were stored there")
+            }
+        }
         if (idToUrl.isNotEmpty()) return@withContext
         val file = File(context.applicationContext.cacheDir, FILE_NAME)
         if (!file.exists()) {
@@ -170,6 +184,30 @@ object M3uIndex {
     fun urlFor(streamId: Int): String? = idToUrl[streamId]
     fun isReady(): Boolean = idToUrl.isNotEmpty()
     fun size(): Int = sizeState.value
+
+    data class Resolved(val url: String, val source: String)
+
+    /**
+     * Resolve a live-channel URL, preferring the M3U-derived URL (verbatim
+     * from the provider). Returns:
+     *  - `Resolved(url, "M3U")` when the M3U has this channel
+     *  - `Resolved(url, "FALLBACK")` when M3U is loaded but missing this
+     *    channel — falls back to [XtreamApi.buildLiveStreamUrl]
+     *  - `null` when the M3U is still loading — caller should toast and wait
+     */
+    fun resolveLiveUrl(
+        streamId: Int, host: String, user: String, pass: String,
+    ): Resolved? {
+        val m3u = urlFor(streamId)
+        return when {
+            m3u != null -> Resolved(m3u, "M3U")
+            isLoading() -> null
+            else -> Resolved(
+                XtreamApi.buildLiveStreamUrl(host, user, pass, streamId),
+                "FALLBACK",
+            )
+        }
+    }
     fun lastErrorMessage(): String? = errorState.value
     fun isLoading(): Boolean = loadingState.value
     fun lastFetchAt(): Long = lastFetchAtState.value

@@ -125,13 +125,24 @@ fun App() {
                 if (ch == null) {
                     io.github.bulchandani.cathode.ui.components.Toaster.show("No channel #$number")
                 } else {
-                    val url = io.github.bulchandani.cathode.data.m3u.M3uIndex.urlFor(ch.streamId)
-                        ?: io.github.bulchandani.cathode.data.xtream.XtreamApi.buildLiveStreamUrl(host, user, pass, ch.streamId)
-                    val label = "%04d  %s".format(ch.streamId, ch.name)
-                    openPlayer(
-                        Overlay.Player(url, label, ch.epgChannelId, backTo = o.backTo),
-                        recent = RecentItem(ContentKind.Live, ch.streamId, label, url, System.currentTimeMillis()),
-                    )
+                    val resolved = io.github.bulchandani.cathode.data.m3u.M3uIndex
+                        .resolveLiveUrl(ch.streamId, host, user, pass)
+                    if (resolved == null) {
+                        io.github.bulchandani.cathode.ui.components.Toaster.show(
+                            "M3U still loading — try again in a moment",
+                        )
+                    } else {
+                        if (resolved.source == "FALLBACK") {
+                            io.github.bulchandani.cathode.ui.components.Toaster.show(
+                                "Using constructed URL — channel not in M3U",
+                            )
+                        }
+                        val label = "%04d  %s  [%s]".format(ch.streamId, ch.name, resolved.source)
+                        openPlayer(
+                            Overlay.Player(resolved.url, label, ch.epgChannelId, backTo = o.backTo),
+                            recent = RecentItem(ContentKind.Live, ch.streamId, label, resolved.url, System.currentTimeMillis()),
+                        )
+                    }
                 }
             },
         )

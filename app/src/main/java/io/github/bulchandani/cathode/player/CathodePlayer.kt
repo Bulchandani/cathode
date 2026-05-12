@@ -1,29 +1,40 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package io.github.bulchandani.cathode.player
 
 import android.content.Context
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import io.github.bulchandani.cathode.data.store.SettingsStore
 
 /**
  * ExoPlayer tuned for IPTV.
  *
- * Uses Media3's DefaultHttpDataSource (HttpURLConnection-backed) rather than
- * OkHttp. Several Xtream providers reject OkHttp's TLS fingerprint (JA3) and
- * its HTTP/2 negotiation with a 405 even when the URL, credentials, and
- * User-Agent are all correct. HttpURLConnection — the same stack TiviMate,
- * IPTV Smarters, and FFmpeg-based players use — sails past those checks.
- * User-Agent matches FFmpeg's Lavf, which is what TiviMate sends on the wire.
- *
- * Cross-protocol redirects are allowed because some providers serve the API
- * over http but redirect stream requests to https on :443.
+ * - HTTP stack: Media3's `DefaultHttpDataSource` (HttpURLConnection-based)
+ *   rather than OkHttp. Several Xtream providers reject OkHttp's TLS
+ *   fingerprint (JA3) and HTTP/2 negotiation with a 405 even when URL,
+ *   credentials, and User-Agent are correct.
+ * - Renderers: [PermissiveRenderersFactory] swaps in a video renderer
+ *   that upgrades EXCEEDS_CAPABILITIES → HANDLED, forcing Media3 to
+ *   attempt decoder configure() instead of refusing pre-check. Lots of
+ *   tablets handle HEVC Level 5.1 / 10-bit fine despite advertising
+ *   only Level 5.0 — TiviMate and libVLC-based players reach the same
+ *   playback via the same trick.
+ * - Track selector: explicitly allow exceeding renderer capabilities and
+ *   video constraints, so the track selector never refuses to pick a
+ *   track for a capability mismatch (would otherwise undo the renderer's
+ *   permissiveness).
+ * - Decoder fallback: enabled so if the primary decoder fails init at
+ *   runtime, Media3 tries the next candidate before erroring.
  */
+@UnstableApi
 object CathodePlayerFactory {
 
     private const val USER_AGENT = "Lavf/58.45.100"
@@ -50,14 +61,16 @@ object CathodePlayerFactory {
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
-        // If the primary (hardware) decoder rejects a format with
-        // ERROR_CODE_DECODER_INIT_FAILED / "exceeds capabilities", fall back
-        // to any other decoder Android exposes for the same MIME type — most
-        // commonly a software decoder. Won't make a 1080p Fire TV decode 4K
-        // HEVC (no decoder can), but it converts a fatal error into a soft
-        // failure on borderline formats.
-        val renderersFactory = DefaultRenderersFactory(context)
+        val renderersFactory = PermissiveRenderersFactory(context)
             .setEnableDecoderFallback(true)
+
+        val trackSelector = DefaultTrackSelector(context).apply {
+            parameters = parameters.buildUpon()
+                .setExceedRendererCapabilitiesIfNecessary(true)
+                .setExceedVideoConstraintsIfNecessary(true)
+                .setExceedAudioConstraintsIfNecessary(true)
+                .build()
+        }
 
         val audioAttrs = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -66,6 +79,7 @@ object CathodePlayerFactory {
 
         return ExoPlayer.Builder(context)
             .setRenderersFactory(renderersFactory)
+            .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttrs, true)

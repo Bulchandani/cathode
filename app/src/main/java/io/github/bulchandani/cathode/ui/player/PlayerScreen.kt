@@ -304,7 +304,14 @@ fun PlayerScreen(
                 LabeledStat("CODEC", videoFormat?.codecs ?: videoFormat?.sampleMimeType ?: "—")
                 LabeledStat("RES", if (videoSize == VideoSize.UNKNOWN) "—" else "${videoSize.width}×${videoSize.height}")
                 LabeledStat("BITRATE", videoFormat?.bitrate?.takeIf { it > 0 }?.let { "${it / 1000} kbps" } ?: "—")
-                LabeledStat("URL", currentUrl.take(48))
+                // Show URL tail (last 60 chars) — the meaningful part for
+                // streams is the `…/streamId.ts` suffix or query token, not
+                // the scheme/host prefix. Taking the head hid `.ts` and any
+                // session token off the end.
+                LabeledStat(
+                    "URL",
+                    if (currentUrl.length > 60) "…" + currentUrl.takeLast(59) else currentUrl,
+                )
             }
         }
 
@@ -525,22 +532,59 @@ private fun AudioSyncDialog(
 }
 
 /**
- * Variants we'll try in order when a stream URL is rejected.
- * Cathode covers the common Xtream provider URL shapes:
- * /live/.../{id}.m3u8 (default), /live/.../{id}.ts, /live/.../{id}
- * (no extension), and /hls/.../{id}.m3u8 (some panels).
+ * Variants we'll try in order when a stream URL is rejected. Original
+ * URL is always tried first (M3U-derived URLs come in verbatim, and the
+ * provider's own URL is the most trustworthy starting point).
+ *
+ * For LIVE URLs we also try a `.ts` variant explicitly — TiviMate uses
+ * `.ts` and many Xtream providers only accept that form. If the M3U
+ * returned a URL without an extension (e.g. `…/live/user/pass/12345`),
+ * the `.ts` candidate is appended (`…/live/user/pass/12345.ts`) so we
+ * have something to fall back to.
  */
 private fun buildUrlCandidates(streamUrl: String): List<String> {
     val out = mutableListOf(streamUrl)
-    if (streamUrl.endsWith(".m3u8", ignoreCase = true)) {
-        out += streamUrl.removeSuffix(".m3u8") + ".ts"
+    val isLive = streamUrl.contains("/live/")
+
+    // Strip a trailing query so we can manipulate the extension cleanly,
+    // then reattach.
+    val q = streamUrl.indexOf('?').let { if (it >= 0) streamUrl.substring(it) else "" }
+    val noQuery = if (q.isNotEmpty()) streamUrl.removeSuffix(q) else streamUrl
+
+    fun addCandidate(s: String) {
+        val full = s + q
+        if (full !in out) out += full
     }
-    val noExt = streamUrl.replace(Regex("""\.(m3u8|ts)$""", RegexOption.IGNORE_CASE), "")
-    if (noExt != streamUrl && noExt !in out) out += noExt
-    if (streamUrl.contains("/live/")) {
+
+    when {
+        noQuery.endsWith(".m3u8", ignoreCase = true) -> {
+            addCandidate(noQuery.removeSuffix(".m3u8") + ".ts")
+        }
+        noQuery.endsWith(".ts", ignoreCase = true) -> {
+            addCandidate(noQuery.removeSuffix(".ts") + ".m3u8")
+        }
+        else -> {
+            // No recognized extension. For live URLs, .ts is the most
+            // commonly-accepted suffix on Xtream providers — try it first
+            // among the synthesized variants.
+            if (isLive) {
+                addCandidate("$noQuery.ts")
+                addCandidate("$noQuery.m3u8")
+            }
+        }
+    }
+
+    // noExt variant — strip whatever extension is there. Some providers
+    // accept the bare path.
+    val noExt = noQuery.replace(Regex("""\.(m3u8|ts)$""", RegexOption.IGNORE_CASE), "")
+    if (noExt != noQuery) addCandidate(noExt)
+
+    // /live/ → /hls/ swap (some Xtream panels expose the live tree under /hls/).
+    if (isLive) {
         val hlsSwap = streamUrl.replace("/live/", "/hls/")
         if (hlsSwap !in out) out += hlsSwap
     }
+
     return out.distinct()
 }
 

@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -136,6 +137,91 @@ object XtreamApi {
             val p = URLEncoder.encode(pass, "UTF-8")
             httpGet(URL("$cleanHost/get.php?username=$u&password=$p&type=m3u_plus"))
         }
+
+    /**
+     * Stream the M3U-plus playlist. Caller consumes the [InputStream]
+     * inside [block]; we manage redirects, headers, and disconnect.
+     * Use this for large playlists instead of [fetchM3uPlus] — a 100k-
+     * channel playlist is ~140 MB as a single String and will OOM the
+     * Fire TV Stick's 256 MB per-process heap.
+     */
+    suspend fun streamM3uPlus(
+        host: String, user: String, pass: String,
+        block: (InputStream) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val cleanHost = normalizeHost(host)
+        val u = URLEncoder.encode(user, "UTF-8")
+        val p = URLEncoder.encode(pass, "UTF-8")
+        httpStream(URL("$cleanHost/get.php?username=$u&password=$p&type=m3u_plus"), block)
+    }
+
+    /**
+     * Probe helper used by the in-app HTTP probe screen. Returns the
+     * full redirect chain with response code, content-type, and first
+     * [bodyLimit] bytes of the final body — without materializing more
+     * than that into memory. Surfaces server error messages without
+     * OOMing on huge responses.
+     */
+    suspend fun probe(url: String, bodyLimit: Int = 800): String = withContext(Dispatchers.IO) {
+        val sb = StringBuilder()
+        var current = URL(url)
+        var hops = 0
+        while (true) {
+            val conn = current.openConnection() as HttpURLConnection
+            var advance: URL? = null
+            try {
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 30_000
+                conn.instanceFollowRedirects = false
+                conn.setRequestProperty("User-Agent", USER_AGENT)
+                conn.setRequestProperty("Accept", "*/*")
+                val code = conn.responseCode
+                sb.append("→ GET ").append(current).append('\n')
+                sb.append("← HTTP ").append(code)
+                conn.contentType?.let { sb.append("  (").append(it).append(")") }
+                sb.append('\n')
+                if (code in 300..399) {
+                    val loc = conn.getHeaderField("Location")
+                    sb.append("  Location: ").append(loc ?: "(missing)").append('\n')
+                    if (loc == null) return@withContext sb.toString()
+                    if (++hops > MAX_REDIRECTS) {
+                        sb.append("  (stopped — too many redirects)\n")
+                        return@withContext sb.toString()
+                    }
+                    advance = URL(current, loc)
+                } else {
+                    val stream = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    if (stream != null) {
+                        val buf = ByteArray(bodyLimit)
+                        val n = stream.read(buf)
+                        if (n > 0) {
+                            sb.append("  body (first $n bytes): ")
+                            sb.append(
+                                String(buf, 0, n, Charsets.UTF_8)
+                                    .replace(Regex("\\s+"), " ")
+                                    .trim()
+                            )
+                            sb.append('\n')
+                        } else {
+                            sb.append("  body: (empty)\n")
+                        }
+                        stream.close()
+                    }
+                    return@withContext sb.toString()
+                }
+            } catch (t: Throwable) {
+                sb.append("  exception: ").append(t::class.simpleName)
+                    .append(": ").append(t.message).append('\n')
+                return@withContext sb.toString()
+            } finally {
+                conn.disconnect()
+            }
+            // outside the try/finally so the connection is closed before we open the next one
+            current = advance ?: return@withContext sb.toString()
+        }
+        @Suppress("UNREACHABLE_CODE") sb.toString()
+    }
 
     // Live URL fallback uses .ts (MPEG-TS) rather than .m3u8 — TiviMate and
     // most Xtream-native players use .ts and many providers 405 the .m3u8
@@ -279,6 +365,55 @@ object XtreamApi {
         val u = URLEncoder.encode(user, "UTF-8")
         val p = URLEncoder.encode(pass, "UTF-8")
         return httpGet(URL("$cleanHost/player_api.php?username=$u&password=$p&action=$action"))
+    }
+
+    /**
+     * Connect to [url] and hand the response body InputStream to [block].
+     * Same redirect/UA/error semantics as [httpGet] but never materializes
+     * the body as a String — required for large playlists.
+     */
+    private fun httpStream(url: URL, block: (InputStream) -> Unit) {
+        var current = url
+        var hops = 0
+        while (true) {
+            val conn = current.openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 60_000
+                conn.instanceFollowRedirects = false
+                conn.setRequestProperty("User-Agent", USER_AGENT)
+                conn.setRequestProperty("Accept", "*/*")
+                val code = conn.responseCode
+
+                if (code in 300..399) {
+                    val location = conn.getHeaderField("Location")
+                        ?: throw IOException("HTTP $code from $current with no Location header")
+                    if (++hops > MAX_REDIRECTS) {
+                        throw IOException("Too many redirects (>${MAX_REDIRECTS}) starting from $url")
+                    }
+                    current = URL(current, location)
+                    continue
+                }
+
+                if (code !in 200..299) {
+                    val body = runCatching {
+                        (conn.errorStream ?: conn.inputStream)
+                            ?.bufferedReader()?.use { it.readText() }
+                            ?: ""
+                    }.getOrDefault("")
+                    val snippet = body.take(300).replace(Regex("\\s+"), " ").trim()
+                    val tail = if (snippet.isNotEmpty()) " — $snippet" else ""
+                    throw IOException("HTTP $code from $current$tail")
+                }
+
+                (conn.inputStream ?: throw IOException("Empty response from $current"))
+                    .use(block)
+                return
+            } finally {
+                conn.disconnect()
+            }
+        }
     }
 
     private fun httpGet(url: URL): String {

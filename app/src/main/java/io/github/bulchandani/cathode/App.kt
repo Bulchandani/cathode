@@ -61,6 +61,12 @@ fun App() {
     val exitApp: () -> Unit = { activity?.finish() }
     val creds = remember { CredsStore(context) }
     val recents = remember { RecentsStore(context) }
+    // Global field-editor controller — any CathodeField anywhere in the tree
+    // sets this, the FieldEditorOverlay below the main `when` reads it and
+    // draws full-screen on top of everything.
+    val fieldEditor = remember {
+        mutableStateOf<io.github.bulchandani.cathode.ui.components.FieldEditorRequest?>(null)
+    }
     remember {
         FavoritesRepo.init(context)
         SourcesStore.init(context)
@@ -97,6 +103,9 @@ fun App() {
         overlay = p
     }
 
+    androidx.compose.runtime.CompositionLocalProvider(
+        io.github.bulchandani.cathode.ui.components.LocalFieldEditor provides fieldEditor,
+    ) {
     when (val o = overlay) {
         is Overlay.Player -> PlayerScreen(
             streamUrl = o.url,
@@ -294,4 +303,10 @@ fun App() {
             onDismiss = { setPinOpen = false },
         )
     }
+
+    // Global field-editor overlay — paints on top of everything else when a
+    // CathodeField anywhere in the tree has requested edit. Lives inside the
+    // CompositionLocalProvider so it can read the same fieldEditor state.
+    io.github.bulchandani.cathode.ui.components.FieldEditorOverlay()
+    }  // close CompositionLocalProvider
 }

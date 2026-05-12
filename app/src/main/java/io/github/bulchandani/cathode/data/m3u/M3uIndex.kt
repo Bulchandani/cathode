@@ -6,24 +6,26 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.File
 
 /**
  * Maps an Xtream Codes `stream_id` to the **actual** stream URL the
- * provider exposes via `/get.php?...&type=m3u_plus`. This is the
- * source of truth for live URLs — every other player uses it; we
- * used to *construct* URLs by guessing scheme/port/path, which is
- * exactly what was 405-ing on this user's provider (HTTPS:443 in
- * the M3U vs HTTP:80 in our build).
+ * provider exposes via `/get.php?...&type=m3u_plus`. Source of truth
+ * for live URLs (we used to *construct* URLs by guessing scheme/port/
+ * path/extension, which 405-ed on some providers).
  *
- * Cache: in-memory + on-disk JSON, 6h TTL. Same lifecycle pattern
- * as EpgRepo: hydrate from disk on init, refresh by [load], wipe by
- * [invalidate] on source switch.
+ * Memory-safe for huge playlists:
+ * - Streams the HTTP body straight into [M3uParser.parseStreaming]
+ *   (no big response String).
+ * - Disk cache is line-based TSV (`id\turl\n`) — no JSONObject tree.
+ *
+ * Cache: in-memory + on-disk TSV, 6h TTL. Hydrate from disk on [init],
+ * refresh by [load], wipe by [invalidate] on source switch.
  */
 object M3uIndex {
 
     private const val CACHE_TTL_MS = 6L * 60 * 60 * 1000
+    private const val FILE_NAME = "m3u_index.tsv"
     private val streamIdRegex = Regex("/(\\d+)\\.[^./?]+(?:\\?.*)?$")
 
     @Volatile private var idToUrl: Map<Int, String> = emptyMap()
@@ -38,16 +40,22 @@ object M3uIndex {
         val file = File(context.applicationContext.cacheDir, FILE_NAME)
         if (!file.exists()) return@withContext
         try {
-            val obj = JSONObject(file.readText())
-            val ts = obj.optLong("at", 0)
-            if (System.currentTimeMillis() - ts < CACHE_TTL_MS) {
-                val map = obj.getJSONObject("map")
-                idToUrl = buildMap {
-                    map.keys().forEach { k ->
-                        val id = k.toIntOrNull() ?: return@forEach
-                        put(id, map.getString(k))
+            val newMap = mutableMapOf<Int, String>()
+            var ts = 0L
+            file.bufferedReader().useLines { lines ->
+                for (line in lines) {
+                    if (line.startsWith("at=")) {
+                        ts = line.substring(3).toLongOrNull() ?: 0L
+                        continue
                     }
+                    val sep = line.indexOf('\t')
+                    if (sep < 0) continue
+                    val id = line.substring(0, sep).toIntOrNull() ?: continue
+                    newMap[id] = line.substring(sep + 1)
                 }
+            }
+            if (System.currentTimeMillis() - ts < CACHE_TTL_MS) {
+                idToUrl = newMap
                 lastFetch = ts
             }
         } catch (t: Throwable) {
@@ -64,20 +72,33 @@ object M3uIndex {
                 System.currentTimeMillis() - lastFetch < CACHE_TTL_MS
             ) return
             try {
-                val raw = XtreamApi.fetchM3uPlus(host, user, pass)
-                val channels = M3uParser.parse(raw.byteInputStream())
-                idToUrl = channels.mapNotNull { ch ->
-                    val match = streamIdRegex.find(ch.url) ?: return@mapNotNull null
-                    val id = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
-                    // Strip default `:443` / `:80` so Host header stays bare —
-                    // some Xtream WAFs 405 explicit-port Host values.
-                    id to XtreamApi.stripDefaultPort(ch.url)
-                }.toMap()
+                val newMap = HashMap<Int, String>(8192)
+                XtreamApi.streamM3uPlus(host, user, pass) { stream ->
+                    // Block until parseStreaming finishes — we're already on an IO dispatcher
+                    // inside streamM3uPlus's withContext; parseStreaming switches to Default
+                    // internally for its line loop.
+                    kotlinx.coroutines.runBlocking {
+                        M3uParser.parseStreaming(stream) { ch ->
+                            val match = streamIdRegex.find(ch.url) ?: return@parseStreaming
+                            val id = match.groupValues[1].toIntOrNull() ?: return@parseStreaming
+                            // Strip default `:443` / `:80` so Host header stays bare —
+                            // some Xtream WAFs 405 explicit-port Host values.
+                            newMap[id] = XtreamApi.stripDefaultPort(ch.url)
+                        }
+                    }
+                }
+                idToUrl = newMap
                 lastFetch = System.currentTimeMillis()
-                lastError = if (idToUrl.isEmpty()) {
-                    "Playlist parsed 0 channels (response may not be M3U; first 200 chars: ${raw.take(200)})"
+                lastError = if (newMap.isEmpty()) {
+                    "Playlist parsed 0 channels — response may not be M3U format"
                 } else null
                 writeDiskCache()
+            } catch (oom: OutOfMemoryError) {
+                // Playlist too big for heap. Don't crash the app — caller falls back to
+                // constructed URLs (which now use .ts and work on this provider).
+                idToUrl = emptyMap()
+                lastError = "Out of memory: playlist too large (${oom.message ?: "no detail"}). " +
+                    "Using constructed URLs instead."
             } catch (t: Throwable) {
                 lastError = t.message ?: t::class.simpleName
             }
@@ -102,14 +123,17 @@ object M3uIndex {
     private suspend fun writeDiskCache() = withContext(Dispatchers.IO) {
         val ctx = appContext ?: return@withContext
         try {
-            val obj = JSONObject()
-            obj.put("at", lastFetch)
-            val mapObj = JSONObject()
-            idToUrl.forEach { (k, v) -> mapObj.put(k.toString(), v) }
-            obj.put("map", mapObj)
-            File(ctx.cacheDir, FILE_NAME).writeText(obj.toString())
+            // Streamed TSV write — no big JSON tree, low peak memory.
+            File(ctx.cacheDir, FILE_NAME).bufferedWriter().use { w ->
+                w.write("at=$lastFetch")
+                w.newLine()
+                idToUrl.forEach { (id, url) ->
+                    w.write(id.toString())
+                    w.write("\t")
+                    w.write(url)
+                    w.newLine()
+                }
+            }
         } catch (_: Throwable) { /* best-effort */ }
     }
-
-    private const val FILE_NAME = "m3u_index.json"
 }

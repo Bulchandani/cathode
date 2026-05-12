@@ -1,89 +1,88 @@
-@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-
 package io.github.bulchandani.cathode.player
 
 import android.content.Context
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import io.github.bulchandani.cathode.data.store.BufferProfile
 import io.github.bulchandani.cathode.data.store.SettingsStore
+import io.github.bulchandani.cathode.log.Logger
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.MediaPlayer
 
 /**
- * ExoPlayer tuned for IPTV.
+ * libVLC-based playback. Replaces the v0.9.x Media3/ExoPlayer stack — same
+ * core that powers TiviMate, IPTV Smarters' fork, and VLC for Android.
  *
- * - HTTP stack: Media3's `DefaultHttpDataSource` (HttpURLConnection-based)
- *   rather than OkHttp. Several Xtream providers reject OkHttp's TLS
- *   fingerprint (JA3) and HTTP/2 negotiation with a 405 even when URL,
- *   credentials, and User-Agent are correct.
- * - Renderers: [PermissiveRenderersFactory] swaps in a video renderer
- *   that upgrades EXCEEDS_CAPABILITIES → HANDLED, forcing Media3 to
- *   attempt decoder configure() instead of refusing pre-check. Lots of
- *   tablets handle HEVC Level 5.1 / 10-bit fine despite advertising
- *   only Level 5.0 — TiviMate and libVLC-based players reach the same
- *   playback via the same trick.
- * - Track selector: explicitly allow exceeding renderer capabilities and
- *   video constraints, so the track selector never refuses to pick a
- *   track for a capability mismatch (would otherwise undo the renderer's
- *   permissiveness).
- * - Decoder fallback: enabled so if the primary decoder fails init at
- *   runtime, Media3 tries the next candidate before erroring.
+ * Why we left Media3:
+ *  - libVLC is permissive about HLS / MPEG-TS quirks. Many provider URLs
+ *    that Media3 rejected with IO_NETWORK_CONNECTION_FAILED or
+ *    EXCEEDS_CAPABILITIES just play with libVLC.
+ *  - libVLC's HW decoder falls back to its own software decoder
+ *    automatically on format mismatch, so the "exceeds capabilities" pre-
+ *    check we worked around with PermissiveVideoRenderer goes away.
+ *  - Audio-sync, track selection, tunneling, all built-in.
+ *
+ * The [LibVLC] instance is a process-scope singleton (init is slow and
+ * memory-hungry); the [MediaPlayer] is created per PlayerScreen and
+ * released when that screen disposes.
  */
-@UnstableApi
-object CathodePlayerFactory {
+object CathodePlayer {
 
-    private const val USER_AGENT = "Lavf/58.45.100"
+    private const val TAG = "VLC"
 
-    fun create(context: Context): ExoPlayer {
-        val profile = SettingsStore.bufferProfile.value
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                profile.minBufferMs,
-                profile.maxBufferMs,
-                profile.playbackBufferMs,
-                profile.rebufferMs,
-            )
-            .build()
+    @Volatile private var libVlc: LibVLC? = null
 
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(USER_AGENT)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
-            .setAllowCrossProtocolRedirects(true)
-            .setKeepPostFor302Redirects(true)
-
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
-        val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(dataSourceFactory)
-
-        val renderersFactory = PermissiveRenderersFactory(context)
-            .setEnableDecoderFallback(true)
-
-        val trackSelector = DefaultTrackSelector(context).apply {
-            parameters = parameters.buildUpon()
-                .setExceedRendererCapabilitiesIfNecessary(true)
-                .setExceedVideoConstraintsIfNecessary(true)
-                .setExceedAudioConstraintsIfNecessary(true)
-                .build()
+    fun libvlc(context: Context): LibVLC {
+        libVlc?.let { return it }
+        return synchronized(this) {
+            libVlc ?: LibVLC(context.applicationContext, buildVlcOptions()).also {
+                libVlc = it
+                Logger.i(TAG, "LibVLC initialized")
+            }
         }
+    }
 
-        val audioAttrs = AudioAttributes.Builder()
-            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-            .setUsage(C.USAGE_MEDIA)
-            .build()
+    /**
+     * Args passed to LibVLC at init. These are CLI flags VLC accepts globally;
+     * per-Media options (UA per request etc) are layered on top via Media.
+     *
+     * Notes:
+     *  - `--http-user-agent`: matches what TiviMate sends; some Xtream WAFs
+     *    gate by UA. Same string we used in DefaultHttpDataSource.
+     *  - `--network-caching`: 2000ms baseline. We override per-stream when
+     *    BufferProfile changes.
+     *  - `--no-drop-late-frames` / `--no-skip-frames`: keep playback stable
+     *    on bursty Wi-Fi; visual blip preferred to silent skip.
+     *  - `--rtsp-tcp`: avoid UDP issues over Wi-Fi (RTSP streams).
+     *  - `--avcodec-hw=any`: use whatever HW decoder is available; fall back
+     *    to software if not. Replaces the PermissiveVideoRenderer hack.
+     */
+    private fun buildVlcOptions(): ArrayList<String> {
+        val cachingMs = networkCachingMs(SettingsStore.bufferProfile.value)
+        return arrayListOf(
+            "--http-user-agent=Lavf/58.45.100",
+            "--http-reconnect",
+            "--network-caching=$cachingMs",
+            "--live-caching=$cachingMs",
+            "--no-drop-late-frames",
+            "--no-skip-frames",
+            "--rtsp-tcp",
+            "--avcodec-hw=any",
+            // libVLC is chatty on stderr; pin to warnings+errors.
+            "-vv",
+            "--no-video-title-show",
+        )
+    }
 
-        return ExoPlayer.Builder(context)
-            .setRenderersFactory(renderersFactory)
-            .setTrackSelector(trackSelector)
-            .setLoadControl(loadControl)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(audioAttrs, true)
-            .setHandleAudioBecomingNoisy(true)
-            .build()
+    fun networkCachingMs(profile: BufferProfile): Int = when (profile) {
+        BufferProfile.LowLatency -> 800
+        BufferProfile.Default -> 2_000
+        BufferProfile.Robust -> 5_000
+    }
+
+    /** Create a MediaPlayer attached to the shared LibVLC. Caller must
+     *  release() when done. */
+    fun createMediaPlayer(context: Context): MediaPlayer {
+        val mp = MediaPlayer(libvlc(context))
+        Logger.d(TAG, "MediaPlayer created")
+        return mp
     }
 }

@@ -13,8 +13,17 @@ android {
         applicationId = "io.github.bulchandani.cathode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 99
-        versionName = "0.9.1"
+        versionCode = 100
+        versionName = "0.10.0"
+
+        // libVLC ships native libs for every ABI. Restrict to ARM — every
+        // device that runs Cathode is ARM (Fire TV, Android tablets,
+        // phones). x86_64 is emulator-only and would add ~50 MB. For local
+        // emulator runs, enable an x86_64 build variant or temporarily
+        // re-add the ABI here.
+        ndk {
+            abiFilters += setOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     // Signing configs:
@@ -108,11 +117,11 @@ dependencies {
     implementation(libs.tv.foundation)
     implementation(libs.tv.material)
 
-    implementation(libs.media3.exoplayer)
-    implementation(libs.media3.exoplayer.hls)
-    implementation(libs.media3.exoplayer.dash)
-    implementation(libs.media3.ui)
-    implementation(libs.media3.datasource.okhttp)
+    // libVLC handles every Xtream/IPTV format flavor (MPEG-TS quirks,
+    // extension-less URLs, awkward HLS manifests, HEVC fallback to software)
+    // that Media3/ExoPlayer rejected. Same player core that powers TiviMate /
+    // VLC for Android. Replaces media3-* entirely.
+    implementation(libs.libvlc.all)
     implementation(libs.okhttp)
 
     implementation(libs.coil.compose)
